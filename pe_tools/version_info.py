@@ -1,7 +1,7 @@
 from .structs2 import Struct
 from .blob import join_blobs
 from .utils import align4
-import six
+import six, struct
 
 _VS_FIXEDFILEINFO = Struct(
     "I:dwSignature",
@@ -37,7 +37,7 @@ class _VersionInfo:
     def __init__(self, root):
         self._root = root
 
-    def get(self, name):
+    def get(self, name, default=None):
         components = [c for c in name.split('/') if c]
 
         cur = self._root
@@ -47,7 +47,7 @@ class _VersionInfo:
                     cur = child
                     break
             else:
-                return None
+                return default
 
         return cur
 
@@ -60,6 +60,53 @@ class _VersionInfo:
     def set_fixed_info(self, fi):
         self._root.value = fi.pack()
 
+    def string_file_info(self):
+        r = {}
+        for fi in self.get('StringFileInfo', []).children:
+            if len(fi.name) != 8:
+                raise RuntimeError('corrupted string file info')
+            langid = int(fi.name[:4], 16)
+            cp = int(fi.name[4:], 16)
+
+            tran = {}
+            for s in fi.children:
+                tran[s.name] = s.value
+            r[(langid, cp)] = tran
+        return r
+
+    def set_string_file_info(self, translations):
+        children = []
+        trans = []
+        for (langid, cp), strs in translations.items():
+            tran_children = [_VerNode(k, v, []) for k, v in sorted(strs.items())]
+            children.append(_VerNode('{:04x}{:04x}'.format(langid, cp), None, tran_children))
+            trans.append(struct.pack('<HH', langid, cp))
+
+        for root_child in self._root.children:
+            if root_child.name == 'StringFileInfo':
+                root_child.children = children
+                break
+        else:
+            self._root.children.append(_VerNode('StringFileInfo', None, children))
+
+        self.set_var('Translation', b''.join(trans))
+
+    def set_var(self, name, value):
+        for ch in self._root.children:
+            if ch.name == 'VarFileInfo':
+                vfi_node = ch
+                break
+        else:
+            vfi_node = _VerNode('VarFileInfo', None, [])
+            self._root.children.append(vfi_node)
+
+        for ch in vfi_node.children:
+            if ch.name == name:
+                ch.value = value
+                break
+        else:
+            vfi_node.children.append(_VerNode(name, value, []))
+
     def pack(self):
         return _pack_node(self._root)
 
@@ -71,8 +118,12 @@ def _pack_node(node):
     name_pad = b'\0' * (children_offset - _NODE_HEADER.size - len(name))
 
     hdr = _NODE_HEADER()
-    if isinstance(node.value, six.string_types):
-        value = node.value.encode('utf-16le')
+    if node.value is None:
+        value = b''
+        hdr.wValueLength = 0
+        hdr.wType = 1
+    elif isinstance(node.value, six.string_types):
+        value = node.value.encode('utf-16le') + b'\0\0'
         hdr.wValueLength = len(value) // 2
         hdr.wType = 1
     else:
@@ -105,7 +156,14 @@ def _parse_one(blob):
     blob = blob[align4(value_len):]
 
     if hdr.wType != 0:
-        value = bytes(value).decode('utf-16le')
+        if not value:
+            value = None
+        else:
+            if len(value) % 2 != 0:
+                raise RuntimeError('a text version info value is not of an even length')
+            if bytes(value[-2:]) != b'\0\0':
+                raise RuntimeError('version info string is not terminated by zero')
+            value = bytes(value[:-2]).decode('utf-16le')
 
     children = []
     while blob:

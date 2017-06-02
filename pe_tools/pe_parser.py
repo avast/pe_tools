@@ -85,7 +85,7 @@ _IMAGE_DATA_DIRECTORY = Struct(
 
 _IMAGE_SECTION_HEADER = Struct(
     '8s:Name',
-    'I:PhysicalAddress:VirtualSize',
+    'I:VirtualSize',
     'I:VirtualAddress',
     'I:SizeOfRawData',
     'I:PointerToRawData',
@@ -224,14 +224,15 @@ class _PeFile:
         return _align(addr, self._opt_header.SectionAlignment)
 
     def _check_vm_overlaps(self):
-        prev = None
-        for sec in sorted(self._sections, key=lambda sec: sec.hdr.VirtualAddress):
+        next_free_address = None
+        for sec in self._sections:
             if sec.hdr.VirtualAddress % self._opt_header.SectionAlignment != 0:
                 raise RuntimeError('sections are misaligned in memory')
 
-            if prev and prev.hdr.VirtualAddress + prev.hdr.VirtualSize > sec.hdr.VirtualAddress:
-                raise RuntimeError('sections overlap in memory')
-            prev = sec
+            if next_free_address is not None and sec.hdr.VirtualAddress != next_free_address:
+                raise RuntimeError('there are holes in the section map')
+
+            next_free_address = self._mem_align(sec.hdr.VirtualAddress + sec.hdr.VirtualSize)
 
     def get_vm(self, start, stop):
         for sec in self._sections:
@@ -287,64 +288,99 @@ class _PeFile:
 
         return slice(dd.VirtualAddress, dd.VirtualAddress + dd.Size)
 
-    def _get_directory_section(self, start, stop):
+    def _get_directory_section(self, dd_idx):
+        if dd_idx >= len(self._data_directories):
+            return None
+
+        dd = self._data_directories[dd_idx]
+        if dd.Size == 0:
+            return None
+
         for sec_idx, sec in enumerate(self._sections):
-            vm_start = sec.hdr.VirtualAddress
-            vm_stop = vm_start + sec.hdr.VirtualSize
-            if vm_start == start and vm_stop >= stop and vm_stop == stop:
+            if sec.hdr.VirtualAddress == dd.VirtualAddress and sec.hdr.VirtualSize == dd.Size:
                 return sec_idx
 
     def _find_vm_hole(self, secs, size):
-        sorted_secs = sorted(secs, key=lambda sec: sec.VirtualAddress)
+        sorted_secs = sorted(secs, key=lambda sec: sec.hdr.VirtualAddress)
         i = 1
         while i < len(sorted_secs):
-            start = self._mem_align(sorted_secs[i-1].VirtualAddress + sorted_secs[i-1].VirtualSize)
-            stop = sorted_secs[i].VirtualAddress
+            start = self._mem_align(sorted_secs[i-1].hdr.VirtualAddress + sorted_secs[i-1].hdr.VirtualSize)
+            stop = sorted_secs[i].hdr.VirtualAddress
 
             if stop - start >= size:
                 return slice(start, self._mem_align(start + size))
 
             i += 1
 
-        start = self._mem_align(sorted_secs[-1].VirtualAddress + sorted_secs[-1].VirtualSize)
+        start = self._mem_align(sorted_secs[-1].hdr.VirtualAddress + sorted_secs[-1].hdr.VirtualSize)
         return slice(start, self._mem_align(start + size))
 
     def _resize_directory(self, idx, size):
-        dd = self._data_directories[idx]
-
-        sec_idx = self._get_directory_section(dd.VirtualAddress, dd.VirtualAddress + dd.Size)
+        sec_idx = self._get_directory_section(idx)
         if sec_idx is None:
             raise RuntimeError('can\'t modify a directory that is not associated with a section')
 
         sec = self._sections[sec_idx]
-        if sec.hdr.VirtualSize >= size:
+        if self._mem_align(sec.hdr.VirtualSize) >= size:
             sec.hdr.VirtualSize = size
+            dd = self._data_directories[idx]
             dd.Size = size
-            return sec_idx, slice(sec.hdr.VirtualAddress, sec.hdr.VirtualAddress + sec.hdr.VirtualSize)
+            return sec_idx, sec.hdr.VirtualAddress
 
-        other_secs = [sec for idx, sec in enumerate(self._sections) if idx != sec_idx]
-        sl = self._find_vm_hole(other_secs, size)
+        move_map = {}
 
-        sec.VirtualAddress = sl.start
-        sec.VirtualSize = sl.stop
+        addr = self._mem_align(sec.hdr.VirtualAddress + size)
+        for other_sec in self._sections[sec_idx + 1:]:
+            move_map[other_sec] = addr
+            addr = self._mem_align(addr + other_sec.hdr.VirtualSize)
+
+        for dd in self._data_directories:
+            if dd.VirtualAddress == 0:
+                continue
+
+            for osec, target_addr in move_map.items():
+                if osec.hdr.VirtualAddress <= dd.VirtualAddress <= osec.hdr.VirtualAddress + osec.hdr.VirtualSize:
+                    dd.VirtualAddress += target_addr - osec.hdr.VirtualAddress
+                    break
+
+        for osec, target_addr in move_map.items():
+            osec.hdr.VirtualAddress = target_addr
+
+        sec.hdr.VirtualSize = size
 
         dd = self._data_directories[idx]
-        dd.VirtualAddress = sl.start
         dd.Size = size
 
-        return sec_idx, sl
+        return sec_idx, sec.hdr.VirtualAddress
+
+    def is_dir_safely_resizable(self, idx):
+        sec_idx = self._get_directory_section(idx)
+        if sec_idx is None:
+            return False
+
+        if sec_idx == len(self._sections):
+            return True
+
+        if sec_idx + 2 != len(self._sections):
+            return False
+
+        reloc_idx = self._get_directory_section(IMAGE_DIRECTORY_ENTRY_BASERELOC)
+        return reloc_idx == sec_idx + 1
 
     def resize_directory(self, idx, size):
-        sec_idx, sl = self._resize_directory(idx, size)
-        return sl
+        sec_idx, addr = self._resize_directory(idx, size)
+        return addr
 
     def set_directory(self, idx, blob):
-        sec_idx, sl = self._resize_directory(idx, len(blob))
+        sec_idx, addr = self._resize_directory(idx, len(blob))
 
         sec = self._sections[sec_idx]
         sec.data = blob
 
     def store(self, fout):
+        self._opt_header.CheckSum = 0
+        self._opt_header.SizeOfImage = max(self._mem_align(sec.hdr.VirtualAddress + sec.hdr.VirtualSize) for sec in self._sections)
+
         self._check_vm_overlaps()
 
         header_end = (len(self._dos_stub) + 4 + self._file_header.size + 2 + self._opt_header.size
@@ -358,8 +394,6 @@ class _PeFile:
             sec.hdr.PointerToRawData = section_offset
             sec.hdr.SizeOfRawData = self._file_align(len(sec.data))
             section_offset = section_offset + sec.hdr.SizeOfRawData
-
-        self._opt_header.CheckSum = 0
 
         new_file = []
 
