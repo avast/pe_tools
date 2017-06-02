@@ -16,14 +16,12 @@ class Version:
             self._parts.append(0)
 
     def get_ms_ls(self):
-        ms = self._parts[0] << 16 + self._parts[1]
-        ls = self._parts[2] << 16 + self._parts[3]
+        ms = (self._parts[0] << 16) + self._parts[1]
+        ls = (self._parts[2] << 16) + self._parts[3]
         return ms, ls
 
 def main():
     ap = argparse.ArgumentParser(fromfile_prefix_chars='@')
-    ap.add_argument('--file-ver', type=Version)
-    ap.add_argument('--product-ver', type=Version)
     ap.add_argument('--remove-signature', action='store_true')
     ap.add_argument('--ignore-trailer', action='store_true')
     ap.add_argument('--remove-trailer', action='store_true')
@@ -87,11 +85,11 @@ def main():
 
             fi = vi.get_fixed_info()
 
-            if args.file_ver:
-                fi.dwFileVersionMS, fi.dwFileVersionLS = args.file_ver.get_ms_ls()
+            if 'FileVersion' in params:
+                fi.dwFileVersionMS, fi.dwFileVersionLS = Version(params['FileVersion']).get_ms_ls()
 
-            if args.product_ver:
-                fi.dwProductVersionMS, fi.dwProductVersionLS = args.product_ver.get_ms_ls()
+            if 'ProductVersion' in params:
+                fi.dwProductVersionMS, fi.dwProductVersionLS = Version(params['ProductVersion']).get_ms_ls()
 
             vi.set_fixed_info(fi)
 
