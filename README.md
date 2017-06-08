@@ -26,7 +26,11 @@ Key can be any of the following values.
 
 For example, to change FileVersion to 1.2.3.4, run the following command.
 
-    chverinfo myfile.exe FileVersion=1.2.3.4
+    chverinfo myfile.exe FileVersion="1, 2, 3, 4"
+
+To modify existing version string, use "/pattern/sub/" syntax.
+
+    chverinfo myfile.exe CompanyName="/avast!?/AVG/"
 
 You can save command line arguments to a text file, one argument per line, and then pass the name of this file.
 

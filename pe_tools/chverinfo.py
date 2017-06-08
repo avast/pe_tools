@@ -1,4 +1,4 @@
-import argparse, sys
+import argparse, sys, re
 from .pe_parser import parse_pe, IMAGE_DIRECTORY_ENTRY_RESOURCE
 from .rsrc import parse_pe_resources, pe_resources_prepack, parse_prelink_resources
 from .blob import IoBlob
@@ -28,7 +28,7 @@ RT_MANIFEST = 24
 
 class Version:
     def __init__(self, s):
-        self._parts = [int(part) for part in s.split('.')]
+        self._parts = [int(part.strip()) for part in s.split(',')]
         if not self._parts or len(self._parts) > 4 or any(part < 0 or part >= 2**16 for part in self._parts):
             raise ValueError('invalid version')
 
@@ -42,6 +42,22 @@ class Version:
 
     def format(self):
         return ', '.join(str(part) for part in self._parts)
+
+class _IdentityReplace:
+    def __init__(self, val):
+        self._val = val
+
+    def __call__(self, s):
+        return self._val
+
+class _ReReplace:
+    def __init__(self, compiled_re, sub):
+        self._compiled_re = compiled_re
+        self._sub = sub
+
+    def __call__(self, s):
+        return self._compiled_re.sub(self._sub, s)
+
 
 def main():
     ap = argparse.ArgumentParser(fromfile_prefix_chars='@')
@@ -67,7 +83,14 @@ def main():
         if len(toks) != 2:
             print('error: strings must be in the form "name=value"', file=sys.stderr)
             return 2
-        params[toks[0]] = toks[1]
+        name, value = toks
+
+        if value.startswith('/'):
+            pattern, sub = value[1:-1].split('/', 1)
+            r = re.compile(pattern)
+            params[name] = _ReReplace(r, sub)
+        else:
+            params[name] = _IdentityReplace(value)
 
     fin = IoBlob(open(args.file, 'rb'))
 
@@ -119,20 +142,23 @@ def main():
             fi = vi.get_fixed_info()
 
             if 'FileVersion' in params:
-                ver = Version(params['FileVersion'])
+                ver = Version(params['FileVersion'](None))
                 fi.dwFileVersionMS, fi.dwFileVersionLS = ver.get_ms_ls()
-                params['FileVersion'] = ver.format()
 
             if 'ProductVersion' in params:
-                ver = Version(params['ProductVersion'])
+                ver = Version(params['ProductVersion'](None))
                 fi.dwProductVersionMS, fi.dwProductVersionLS = ver.get_ms_ls()
-                params['ProductVersion'] = ver.format()
 
             vi.set_fixed_info(fi)
 
             sfi = vi.string_file_info()
             for (langid, cp), strings in sfi.items():
-                strings.update(params)
+                for k, fn in params.items():
+                    val = fn(strings.get(k, ''))
+                    if val:
+                        strings[k] = val
+                    elif k in strings:
+                        del strings[k]
             vi.set_string_file_info(sfi)
 
             rsrc[RT_VERSION][name][lang] = vi.pack()
