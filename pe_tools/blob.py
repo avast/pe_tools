@@ -66,6 +66,9 @@ class IoBlob(Blob):
     def __bytes__(self):
         self._file
 
+    def close(self):
+        self._fileobj.close()
+
     def to_bytes(self, offs, size):
         assert 0 <= offs <= self._fileobj_size
         assert 0 <= size

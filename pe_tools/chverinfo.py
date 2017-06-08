@@ -1,4 +1,4 @@
-import argparse, sys, re
+import argparse, sys, re, tempfile, os
 from .pe_parser import parse_pe, IMAGE_DIRECTORY_ENTRY_RESOURCE
 from .rsrc import parse_pe_resources, pe_resources_prepack, parse_prelink_resources
 from .blob import IoBlob
@@ -58,7 +58,6 @@ class _ReReplace:
     def __call__(self, s):
         return self._compiled_re.sub(self._sub, s)
 
-
 def main():
     ap = argparse.ArgumentParser(fromfile_prefix_chars='@')
     ap.add_argument('--remove-signature', action='store_true')
@@ -70,9 +69,6 @@ def main():
     ap.add_argument('strings', nargs='*')
 
     args = ap.parse_args()
-
-    if not args.output:
-        args.output = args.file + '.out'
 
     if args.rebrand is not None:
         rebrand_rsrc = parse_prelink_resources(IoBlob(args.rebrand))
@@ -167,7 +163,24 @@ def main():
     addr = pe.resize_directory(IMAGE_DIRECTORY_ENTRY_RESOURCE, prepacked.size)
     pe.set_directory(IMAGE_DIRECTORY_ENTRY_RESOURCE, prepacked.pack(addr))
 
-    with open(args.output, 'wb') as fout:
-        pe.store(fout)
+    if not args.output:
+        fout, fout_name = tempfile.mkstemp(dir=os.path.split(args.file)[0])
+        fout = os.fdopen(fout, mode='w+b')
+        try:
+            pe.store(fout)
+
+            fin.close()
+            fout.close()
+        except:
+            fout.close()
+            os.remove(fout_name)
+            raise
+        else:
+            os.remove(args.file)
+            os.rename(fout_name, args.file)
+
+    else:
+        with open(args.output, 'wb') as fout:
+            pe.store(fout)
 
     return 0
