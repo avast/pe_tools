@@ -1,7 +1,7 @@
 from .structs2 import Struct
 from .blob import join_blobs
-from .utils import align4
-import six, time
+from .utils import *
+import six, time, struct
 
 _RESOURCE_DIRECTORY_TABLE = Struct(
     "I:Characteristics",
@@ -28,10 +28,69 @@ _STRING_HEADER = Struct(
     "H:Length",
     )
 
+_RES_HEADER_SIZES = Struct(
+    "I:DataSize",
+    "I:HeaderSize",
+    )
+
+_RES_HEADER = Struct(
+    "I:DataVersion",
+    "H:MemoryFlags",
+    "H:LanguageId",
+    "I:Version",
+    "I:Characteristics",
+    )
+
+def _parse_prelink_name(blob, align=False):
+    name, = struct.unpack('<H', bytes(blob[:2]))
+    if name == 0xffff:
+        name, = struct.unpack('<H', bytes(blob[2:4]))
+        return name, blob[4:]
+    else:
+        r = []
+        while True:
+            ch = bytes(blob[:64])
+            i = 0
+            while i < 64:
+                if ch[i:i+2] == b'\0\0':
+                    r.append(ch[:i])
+                    return b''.join(r).decode('utf-16le'), blob[align4(i+2) if align else i+2:]
+                i += 2
+            r.append(ch)
+            blob = blob[64:]
+
+
+def _parse_one_prelink_res(blob):
+    hdr_sizes = _RES_HEADER_SIZES.parse_blob(blob)
+    if hdr_sizes.HeaderSize < hdr_sizes.size:
+        raise RuntimeError('corrupted header')
+
+    hdr_blob = blob[hdr_sizes.size:hdr_sizes.HeaderSize]
+    data_blob = blob[hdr_sizes.HeaderSize:hdr_sizes.HeaderSize + hdr_sizes.DataSize]
+    next_blob = blob[align4(hdr_sizes.HeaderSize + hdr_sizes.DataSize):]
+
+    type, hdr_blob = _parse_prelink_name(hdr_blob, align=False)
+    name, hdr_blob = _parse_prelink_name(hdr_blob, align=True)
+
+    hdr = _RES_HEADER.parse_blob(hdr_blob)
+    hdr.type = type
+    hdr.name = name
+    return hdr, data_blob, next_blob
+
+def parse_prelink_resources(blob):
+    r = {}
+    while blob:
+        hdr, data, blob = _parse_one_prelink_res(blob)
+        r.setdefault(hdr.type, {}).setdefault(hdr.name, {})[hdr.LanguageId] = data
+
+    if 0 in r:
+        del r[0]
+    return r
+
 def parse_pe_resources(blob, base):
     def parse_string(offs):
         hdr = _STRING_HEADER.parse_blob(blob[offs:])
-        return fileobj.read(hdr.Length).decode('utf-16le')
+        return bytes(blob[offs+_STRING_HEADER.size:offs+_STRING_HEADER.size+hdr.Length*2]).decode('utf-16le')
 
     def parse_data(offs):
         entry = _RESOURCE_DATA_ENTRY.parse_blob(blob[offs:])
@@ -54,7 +113,7 @@ def parse_pe_resources(blob, base):
         id_entries = [_RESOURCE_DIRECTORY_ENTRY.parse(fin) for i in range(node.NumberOfIdEntries)]
 
         for entry in name_entries:
-            name = parse_string(entry.NameOrId)
+            name = parse_string(entry.NameOrId & ~(1<<31))
             if entry.Offset & (1<<31):
                 r[name] = parse_tree(entry.Offset & ~(1<<31))
             else:
@@ -139,7 +198,7 @@ def pe_resources_prepack(rsrc):
             r = sum(len(ss) for ss in strings)
             string_map[s] = r
 
-            strings.append(_STRING_HEADER(Length=len(encoded)).pack())
+            strings.append(_STRING_HEADER(Length=len(encoded)//2).pack())
             strings.append(encoded)
         return r
 
@@ -153,10 +212,11 @@ def pe_resources_prepack(rsrc):
     for ent in entries:
         if ent.type == _RESOURCE_DIRECTORY_ENTRY:
             if isinstance(ent.NameOrId, six.string_types):
-                ent.NameOrId = table_size + add_string(ent.NameOrId)
+                ent.NameOrId = (1<<31) | (table_size + add_string(ent.NameOrId))
 
     strings = b''.join(strings)
-    strings += b'\0' * ((4 - (len(strings) % 4)) % 4)
+    aligned_strings_len = align16(len(strings))
+    strings += b'\0' * (aligned_strings_len - len(strings))
 
     data_offs = table_size + len(strings)
     blobs = []
@@ -172,7 +232,7 @@ def pe_resources_prepack(rsrc):
             ent.DataRva = data_offs
 
             blobs.append(blob)
-            aligned_size = align4(len(blob))
+            aligned_size = align8(len(blob))
             pad = aligned_size - len(blob)
             if pad:
                 blobs.append(b'\0' * pad)

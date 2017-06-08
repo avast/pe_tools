@@ -111,7 +111,13 @@ class _VersionInfo:
         return _pack_node(self._root)
 
 def _pack_node(node):
-    children = join_blobs(_pack_node(child) for child in node.children)
+    children = []
+    for child in node.children:
+        if children:
+            children.append(b'\0' * (align4(len(children[-1])) - len(children[-1])))
+        children.append(_pack_node(child))
+    children = b''.join(children)
+
     name = node.name.encode('utf-16le') + b'\0\0'
 
     children_offset = align4(_NODE_HEADER.size + len(name))
@@ -131,10 +137,14 @@ def _pack_node(node):
         hdr.wValueLength = len(value)
         hdr.wType = 0
 
-    value_len_aligned = align4(len(value))
-    value_pad = b'\0' * (value_len_aligned - len(value))
-    hdr.wLength = _NODE_HEADER.size + len(name) + len(name_pad) + len(value) + len(value_pad) + len(children)
+    if not children:
+        hdr.wLength = _NODE_HEADER.size + len(name) + len(name_pad) + len(value)
+        value_pad = b''
+    else:
+        value_len_aligned = align4(len(value))
+        value_pad = b'\0' * (value_len_aligned - len(value))
 
+    hdr.wLength = _NODE_HEADER.size + len(name) + len(name_pad) + len(value) + len(value_pad) + len(children)
     return hdr.pack() + name + name_pad + value + value_pad + children
 
 def parse_version_info(blob):

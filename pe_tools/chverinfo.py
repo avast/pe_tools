@@ -1,10 +1,30 @@
 import argparse, sys
 from .pe_parser import parse_pe, IMAGE_DIRECTORY_ENTRY_RESOURCE
-from .rsrc import parse_pe_resources, pe_resources_prepack
+from .rsrc import parse_pe_resources, pe_resources_prepack, parse_prelink_resources
 from .blob import IoBlob
 from .version_info import parse_version_info
 
+RT_CURSOR = 1
+RT_BITMAP = 2
+RT_ICON = 3
+RT_MENU = 4
+RT_DIALOG = 5
+RT_STRING = 6
+RT_FONTDIR = 7
+RT_FONT = 8
+RT_ACCELERATOR = 9
+RT_RCDATA = 10
+RT_MESSAGETABLE = 11
+RT_GROUP_CURSOR = 12
+RT_GROUP_ICON = 14
 RT_VERSION = 16
+RT_DLGINCLUDE = 17
+RT_PLUGPLAY = 19
+RT_VXD = 20
+RT_ANICURSOR = 21
+RT_ANIICON = 22
+RT_HTML = 23
+RT_MANIFEST = 24
 
 class Version:
     def __init__(self, s):
@@ -20,11 +40,15 @@ class Version:
         ls = (self._parts[2] << 16) + self._parts[3]
         return ms, ls
 
+    def format(self):
+        return ', '.join(str(part) for part in self._parts)
+
 def main():
     ap = argparse.ArgumentParser(fromfile_prefix_chars='@')
     ap.add_argument('--remove-signature', action='store_true')
     ap.add_argument('--ignore-trailer', action='store_true')
     ap.add_argument('--remove-trailer', action='store_true')
+    ap.add_argument('--rebrand', type=argparse.FileType('rb'))
     ap.add_argument('--output', '-o')
     ap.add_argument('file')
     ap.add_argument('strings', nargs='*')
@@ -33,6 +57,9 @@ def main():
 
     if not args.output:
         args.output = args.file + '.out'
+
+    if args.rebrand is not None:
+        rebrand_rsrc = parse_prelink_resources(IoBlob(args.rebrand))
 
     params = {}
     for param in args.strings:
@@ -79,6 +106,12 @@ def main():
         print('warning: there is no version info in the file {}'.format(args.file), file=sys.stderr)
         return 0
 
+    if args.rebrand is not None:
+        new_rsrc = rebrand_rsrc
+        if RT_MANIFEST in rsrc:
+            new_rsrc[RT_MANIFEST] = rsrc[RT_MANIFEST]
+        rsrc = new_rsrc
+
     for name in rsrc[RT_VERSION]:
         for lang in rsrc[RT_VERSION][name]:
             vi = parse_version_info(rsrc[RT_VERSION][name][lang])
@@ -86,10 +119,14 @@ def main():
             fi = vi.get_fixed_info()
 
             if 'FileVersion' in params:
-                fi.dwFileVersionMS, fi.dwFileVersionLS = Version(params['FileVersion']).get_ms_ls()
+                ver = Version(params['FileVersion'])
+                fi.dwFileVersionMS, fi.dwFileVersionLS = ver.get_ms_ls()
+                params['FileVersion'] = ver.format()
 
             if 'ProductVersion' in params:
-                fi.dwProductVersionMS, fi.dwProductVersionLS = Version(params['ProductVersion']).get_ms_ls()
+                ver = Version(params['ProductVersion'])
+                fi.dwProductVersionMS, fi.dwProductVersionLS = ver.get_ms_ls()
+                params['ProductVersion'] = ver.format()
 
             vi.set_fixed_info(fi)
 
