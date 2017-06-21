@@ -1,4 +1,5 @@
 import argparse, sys, re, tempfile, os
+import xml.dom.minidom
 from .pe_parser import parse_pe, IMAGE_DIRECTORY_ENTRY_RESOURCE
 from .rsrc import parse_pe_resources, pe_resources_prepack, parse_prelink_resources
 from .blob import IoBlob
@@ -64,6 +65,7 @@ def main():
     ap.add_argument('--ignore-trailer', action='store_true')
     ap.add_argument('--remove-trailer', action='store_true')
     ap.add_argument('--rebrand', type=argparse.FileType('rb'))
+    ap.add_argument('--manifest-deps', action='append')
     ap.add_argument('--output', '-o')
     ap.add_argument('file')
     ap.add_argument('strings', nargs='*')
@@ -121,9 +123,32 @@ def main():
     rsrc_blob = pe.get_vm(rsrc_slice.start, rsrc_slice.stop)
 
     rsrc = parse_pe_resources(rsrc_blob, rsrc_slice.start)
+
+    if args.manifest_deps:
+        new_man = ['<dependency>']
+        for man in args.manifest_deps:
+            new_man.append('<dependentAssembly><assemblyIdentity {}></assemblyIdentity></dependentAssembly>'.format(man))
+        new_man.append('</dependency>')
+        new_dep_node = xml.dom.minidom.parseString(''.join(new_man)).documentElement
+
+        if RT_MANIFEST in rsrc:
+            for name in rsrc[RT_MANIFEST]:
+                for lang in rsrc[RT_MANIFEST][name]:
+                    m = rsrc[RT_MANIFEST][name][lang]
+
+                    man = xml.dom.minidom.parseString(bytes(m))
+
+                    assembly_node = man.documentElement
+                    for dep_elem in assembly_node.getElementsByTagName('dependency'):
+                        assembly_node.removeChild(dep_elem)
+
+                    assembly_node.insertBefore(new_dep_node, assembly_node.firstChild)
+
+                    new_man = b'\xef\xbb\xbf' + man.toxml('UTF-8')
+                    rsrc[RT_MANIFEST][name][lang] = new_man
+
     if RT_VERSION not in rsrc:
         print('warning: there is no version info in the file {}'.format(args.file), file=sys.stderr)
-        return 0
 
     if args.rebrand is not None:
         new_rsrc = rebrand_rsrc
