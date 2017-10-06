@@ -64,6 +64,7 @@ def main():
     ap.add_argument('--remove-signature', action='store_true')
     ap.add_argument('--ignore-trailer', action='store_true')
     ap.add_argument('--remove-trailer', action='store_true')
+    ap.add_argument('--ignore-checksum', action='store_true')
     ap.add_argument('--rebrand', type=argparse.FileType('rb'))
     ap.add_argument('--manifest-deps', action='append')
     ap.add_argument('--output', '-o')
@@ -92,7 +93,7 @@ def main():
 
     fin = IoBlob(open(args.file, 'rb'))
 
-    pe = parse_pe(fin)
+    pe = parse_pe(fin, ignore_checksum=args.ignore_checksum)
     if pe.has_signature():
         if not args.remove_signature and not args.remove_trailer:
             print('error: the file contains a signature', file=sys.stderr)
@@ -156,7 +157,7 @@ def main():
             new_rsrc[RT_MANIFEST] = rsrc[RT_MANIFEST]
         rsrc = new_rsrc
 
-    for name in rsrc[RT_VERSION]:
+    for name in rsrc.get(RT_VERSION, []):
         for lang in rsrc[RT_VERSION][name]:
             vi = parse_version_info(rsrc[RT_VERSION][name][lang])
 

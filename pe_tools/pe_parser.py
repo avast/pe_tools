@@ -189,7 +189,7 @@ def pe_checksum(*blobs):
     return r + total_len
 
 class _PeFile:
-    def __init__(self, blob):
+    def __init__(self, blob, ignore_checksum=False):
         pe_offs, = blob.load(0x3c, '<H')
 
         fin = blob.seek(pe_offs)
@@ -211,7 +211,7 @@ class _PeFile:
 
         self._checksum_offs = pe_offs + 4 + _IMAGE_FILE_HEADER.size + 4*16
 
-        if opt.CheckSum != 0:
+        if not ignore_checksum and opt.CheckSum != 0:
             real_checksum = pe_checksum(blob[:self._checksum_offs], b'\0\0\0\0', blob[self._checksum_offs + 4:])
             if opt.CheckSum != real_checksum:
                 raise RuntimeError('incorrect checksum')
@@ -465,7 +465,7 @@ class _PeFile:
 
         write_blob(fout, out_blob)
 
-def parse_pe(blob):
+def parse_pe(blob, ignore_checksum=False):
     if not isinstance(blob, Blob):
         blob = IoBlob(blob)
-    return _PeFile(blob)
+    return _PeFile(blob, ignore_checksum=ignore_checksum)
