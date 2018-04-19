@@ -1,6 +1,6 @@
 from .structs2 import Struct
-from .blob import join_blobs
 from .utils import align4
+from grope import rope
 import six, struct
 
 _VS_FIXEDFILEINFO = Struct(
@@ -18,6 +18,17 @@ _VS_FIXEDFILEINFO = Struct(
     "I:dwFileDateMS",
     "I:dwFileDateLS",
     )
+
+def _set_file_version(self, major, minor=0, patch=0, build=0):
+    self.dwFileVersionMS = (major << 16) | minor
+    self.dwFileVersionLS = (patch << 16) | build
+
+def _set_product_version(self, major, minor=0, patch=0, build=0):
+    self.dwProductVersionMS = (major << 16) | minor
+    self.dwProductVersionLS = (patch << 16) | build
+
+_VS_FIXEDFILEINFO.set_file_version = _set_file_version
+_VS_FIXEDFILEINFO.set_product_version = _set_product_version
 
 FIXEDFILEINFO_SIG = 0xFEEF04BD
 
@@ -55,6 +66,7 @@ class _VersionInfo:
         fi = _VS_FIXEDFILEINFO.parse_all(self._root.value)
         if fi.dwSignature != FIXEDFILEINFO_SIG:
             raise ValueError('FIXEDFILEINFO_SIG mismatch')
+        fi.set_file_version
         return fi
 
     def set_fixed_info(self, fi):
@@ -116,7 +128,7 @@ def _pack_node(node):
         if children:
             children.append(b'\0' * (align4(len(children[-1])) - len(children[-1])))
         children.append(_pack_node(child))
-    children = b''.join(children)
+    children = rope(*children)
 
     name = node.name.encode('utf-16le') + b'\0\0'
 
@@ -145,7 +157,7 @@ def _pack_node(node):
         value_pad = b'\0' * (value_len_aligned - len(value))
 
     hdr.wLength = _NODE_HEADER.size + len(name) + len(name_pad) + len(value) + len(value_pad) + len(children)
-    return hdr.pack() + name + name_pad + value + value_pad + children
+    return rope(hdr.pack(), name, name_pad, value, value_pad, children)
 
 def parse_version_info(blob):
     root, next = _parse_one(blob)

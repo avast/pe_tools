@@ -1,5 +1,5 @@
 import struct, io
-from .blob import Blob, IoBlob, PadBlob, write_blob, join_blobs
+from grope import BlobIO, rope
 from .structs2 import Struct
 
 _IMAGE_FILE_HEADER = Struct(
@@ -166,8 +166,7 @@ class _PeSection:
         self.hdr = hdr
         self.data = data
 
-def pe_checksum(*blobs):
-    blob = join_blobs(blobs)
+def pe_checksum(blob):
     total_len = len(blob)
 
     r = 0
@@ -188,11 +187,15 @@ def pe_checksum(*blobs):
 
     return r + total_len
 
+def _read(blob, fmt):
+    size = struct.calcsize(fmt)
+    return struct.unpack(fmt, bytes(blob[:size]))
+
 class _PeFile:
     def __init__(self, blob, ignore_checksum=False):
-        pe_offs, = blob.load(0x3c, '<H')
+        pe_offs, = _read(blob[0x3c:], '<H')
 
-        fin = blob.seek(pe_offs)
+        fin = BlobIO(blob[pe_offs:])
 
         sig = fin.read(4)
         if sig != b'PE\0\0':
@@ -212,7 +215,7 @@ class _PeFile:
         self._checksum_offs = pe_offs + 4 + _IMAGE_FILE_HEADER.size + 4*16
 
         if not ignore_checksum and opt.CheckSum != 0:
-            real_checksum = pe_checksum(blob[:self._checksum_offs], b'\0\0\0\0', blob[self._checksum_offs + 4:])
+            real_checksum = pe_checksum(rope(blob[:self._checksum_offs], b'\0\0\0\0', blob[self._checksum_offs + 4:]))
             if opt.CheckSum != real_checksum:
                 raise RuntimeError('incorrect checksum')
 
@@ -287,7 +290,7 @@ class _PeFile:
                 init_size = min(sec.hdr.SizeOfRawData - sec_offs, stop - start)
                 uninit_size = stop - start - init_size
 
-                return sec.data[sec_offs:sec_offs + init_size] + PadBlob(uninit_size)
+                return rope(sec.data[sec_offs:sec_offs + init_size], b'\0'*uninit_size)
 
     def has_trailer(self):
         return bool(self._trailer)
@@ -367,12 +370,6 @@ class _PeFile:
             raise RuntimeError('can\'t modify a directory that is not associated with a section')
 
         sec = self._sections[sec_idx]
-        if self._mem_align(sec.hdr.VirtualSize) >= size:
-            sec.hdr.VirtualSize = size
-            dd = self._data_directories[idx]
-            dd.Size = size
-            return sec_idx, sec.hdr.VirtualAddress
-
         move_map = {}
 
         addr = self._mem_align(sec.hdr.VirtualAddress + size)
@@ -416,7 +413,7 @@ class _PeFile:
         sec = self._sections[sec_idx]
         sec.data = blob
 
-    def store(self, fout):
+    def to_blob(self):
         self._opt_header.CheckSum = 0
         self._opt_header.SizeOfImage = max(self._mem_align(sec.hdr.VirtualAddress + sec.hdr.VirtualSize) for sec in self._sections)
 
@@ -448,24 +445,20 @@ class _PeFile:
         for sec in self._sections:
             new_file.append(sec.hdr.pack())
 
-        new_file.append(PadBlob(header_pad))
+        new_file.append(b'\0'*header_pad)
         for sec in self._sections:
             new_file.append(sec.data)
             with_pad = self._file_align(len(sec.data))
             pad = with_pad - len(sec.data)
             if pad:
-                new_file.append(PadBlob(pad))
+                new_file.append(b'\0'*pad)
 
         new_file.append(self._trailer)
 
-        out_blob = join_blobs(new_file)
+        out_blob = rope(*new_file)
         new_checksum = pe_checksum(out_blob)
 
-        out_blob = out_blob[:self._checksum_offs] + struct.pack('<I', new_checksum) + out_blob[self._checksum_offs + 4:]
-
-        write_blob(fout, out_blob)
+        return rope(out_blob[:self._checksum_offs], struct.pack('<I', new_checksum), out_blob[self._checksum_offs + 4:])
 
 def parse_pe(blob, ignore_checksum=False):
-    if not isinstance(blob, Blob):
-        blob = IoBlob(blob)
     return _PeFile(blob, ignore_checksum=ignore_checksum)

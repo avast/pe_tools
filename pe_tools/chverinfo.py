@@ -1,8 +1,8 @@
 import argparse, sys, re, tempfile, os
 import xml.dom.minidom
+import grope
 from .pe_parser import parse_pe, IMAGE_DIRECTORY_ENTRY_RESOURCE
 from .rsrc import parse_pe_resources, pe_resources_prepack, parse_prelink_resources
-from .blob import IoBlob
 from .version_info import parse_version_info
 
 RT_CURSOR = 1
@@ -74,7 +74,7 @@ def main():
     args = ap.parse_args()
 
     if args.rebrand is not None:
-        rebrand_rsrc = parse_prelink_resources(IoBlob(args.rebrand))
+        rebrand_rsrc = parse_prelink_resources(grope.BlobIO(args.rebrand))
 
     params = {}
     for param in args.strings:
@@ -91,7 +91,7 @@ def main():
         else:
             params[name] = _IdentityReplace(value)
 
-    fin = IoBlob(open(args.file, 'rb'))
+    fin = grope.BlobIO(open(args.file, 'rb'))
 
     pe = parse_pe(fin, ignore_checksum=args.ignore_checksum)
     if pe.has_signature():
@@ -207,6 +207,6 @@ def main():
 
     else:
         with open(args.output, 'wb') as fout:
-            pe.store(fout)
+            grope.dump(pe.to_blob(), fout)
 
     return 0

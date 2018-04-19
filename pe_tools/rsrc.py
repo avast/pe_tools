@@ -1,7 +1,29 @@
 from .structs2 import Struct
-from .blob import join_blobs
+from grope import BlobIO, rope
 from .utils import *
 import six, time, struct
+
+RT_CURSOR = 1
+RT_BITMAP = 2
+RT_ICON = 3
+RT_MENU = 4
+RT_DIALOG = 5
+RT_STRING = 6
+RT_FONTDIR = 7
+RT_FONT = 8
+RT_ACCELERATOR = 9
+RT_RCDATA = 10
+RT_MESSAGETABLE = 11
+RT_GROUP_CURSOR = 12
+RT_GROUP_ICON = 14
+RT_VERSION = 16
+RT_DLGINCLUDE = 17
+RT_PLUGPLAY = 19
+RT_VXD = 20
+RT_ANICURSOR = 21
+RT_ANIICON = 22
+RT_HTML = 23
+RT_MANIFEST = 24
 
 _RESOURCE_DIRECTORY_TABLE = Struct(
     "I:Characteristics",
@@ -106,7 +128,7 @@ def parse_pe_resources(blob, base):
     def parse_tree(offs):
         r = {}
 
-        fin = blob.seek(offs)
+        fin = BlobIO(blob[offs:])
 
         node = _RESOURCE_DIRECTORY_TABLE.parse(fin)
         name_entries = [_RESOURCE_DIRECTORY_ENTRY.parse(fin) for i in range(node.NumberOfNameEntries)]
@@ -139,7 +161,7 @@ class _PrepackedResources:
 
     def pack(self, base):
         def _transform(ent):
-            if ent.type != _RESOURCE_DATA_ENTRY:
+            if not isinstance(ent, _RESOURCE_DATA_ENTRY):
                 return ent
             return ent.clone(DataRva=ent.DataRva + base)
 
@@ -210,7 +232,7 @@ def pe_resources_prepack(rsrc):
 
     table_size = offs
     for ent in entries:
-        if ent.type == _RESOURCE_DIRECTORY_ENTRY:
+        if isinstance(ent, _RESOURCE_DIRECTORY_ENTRY):
             if isinstance(ent.NameOrId, six.string_types):
                 ent.NameOrId = (1<<31) | (table_size + add_string(ent.NameOrId))
 
@@ -222,12 +244,12 @@ def pe_resources_prepack(rsrc):
     blobs = []
 
     for ent in entries:
-        if ent.type == _RESOURCE_DIRECTORY_ENTRY:
-            if ent.Offset.type == _RESOURCE_DIRECTORY_TABLE:
+        if isinstance(ent, _RESOURCE_DIRECTORY_ENTRY):
+            if isinstance(ent.Offset, _RESOURCE_DIRECTORY_TABLE):
                 ent.Offset = (1<<31) | _entry_offsets[ent.Offset]
             else:
                 ent.Offset = _entry_offsets[ent.Offset]
-        elif ent.type == _RESOURCE_DATA_ENTRY:
+        elif isinstance(ent, _RESOURCE_DATA_ENTRY):
             blob = ent.DataRva
             ent.DataRva = data_offs
 
@@ -239,4 +261,4 @@ def pe_resources_prepack(rsrc):
 
             data_offs += aligned_size
 
-    return _PrepackedResources(entries, strings, join_blobs(blobs))
+    return _PrepackedResources(entries, strings, rope(*blobs))

@@ -1,27 +1,35 @@
 import struct
-from .blob import Blob
 
 class StructParseError(RuntimeError):
     pass
 
-class _StructInstance:
-    def __init__(self, type, schema, fmt, size):
-        self.type = type
-        self._schema = schema
-        self._fmt = fmt
-        self.size = size
+def Struct(*fields):
+    fmts = ['<']
+    names = []
+    for fld in fields:
+        fmt, name = fld.split(':', 1)
+        fmts.append(fmt)
+        names.append(name.split(':'))
+
+    _names = names
+    _fmt = ''.join(fmts)
+    size = struct.calcsize(_fmt)
+
+    def __init__(self, **kw):
+        for names in _names:
+            for name in names:
+                setattr(self, name, kw.get(name, 0))
 
     def __repr__(self):
-        return '_StructInstance({})'.format(', '.join('{}={!r}'.format(k[0], getattr(self, k[0])) for k in self._schema))
+        return 'struct({})'.format(', '.join('{}={!r}'.format(k[0], getattr(self, k[0])) for k in _names))
 
     def pack(self):
-        data = tuple(getattr(self, fld[0]) for fld in self._schema)
-        return struct.pack(self._fmt, *data)
+        data = tuple(getattr(self, fld[0]) for fld in _names)
+        return struct.pack(_fmt, *data)
 
     def clone(self, **kw):
-        r = _StructInstance(self.type, self._schema, self._fmt, self.size)
-        for names in self._schema:
-
+        r = rtype()
+        for names in _names:
             for name in names:
                 if name in kw:
                     value = kw[name]
@@ -36,45 +44,40 @@ class _StructInstance:
     def write_to(self, fout):
         fout.write(self.pack())
 
-class Struct:
-    def __init__(self, *fields):
-        fmts = ['<']
-        names = []
-        for fld in fields:
-            fmt, name = fld.split(':', 1)
-            fmts.append(fmt)
-            names.append(name.split(':'))
-
-        self._names = names
-        self._fmt = ''.join(fmts)
-        self.size = struct.calcsize(self._fmt)
-
-    def __call__(self, **kw):
-        r = _StructInstance(self, self._names, self._fmt, self.size)
-        for names in self._names:
-            for name in names:
-                setattr(r, name, kw.get(name, 0))
-        return r
-
-    def _parse(self, data):
-        fields = struct.unpack(self._fmt, data)
-        r = _StructInstance(self, self._names, self._fmt, self.size)
-        for fld, names in zip(fields, self._names):
+    def _parse(data):
+        fields = struct.unpack(_fmt, data)
+        r = rtype()
+        for fld, names in zip(fields, _names):
             for name in names:
                 setattr(r, name, fld)
         return r
 
-    def parse(self, fin):
-        data = fin.read(self.size)
-        if len(data) != self.size:
+    @staticmethod
+    def parse(fin):
+        data = fin.read(size)
+        if len(data) != size:
             raise StructParseError('Prematurely reached EOF')
-        return self._parse(data)
+        return _parse(data)
 
-    def parse_blob(self, blob):
-        return self._parse(bytes(blob[:self.size]))
+    @staticmethod
+    def parse_blob(blob):
+        return _parse(bytes(blob[:size]))
 
-    def parse_all(self, blob):
-        if len(blob) != self.size:
+    @staticmethod
+    def parse_all(blob):
+        if len(blob) != size:
             raise StructParseError('Size mismatch')
-        return self._parse(bytes(blob))
+        return _parse(bytes(blob))
 
+    rtype = type('struct', (object, ), {
+        '__init__': __init__,
+        '__repr__': __repr__,
+        'pack': pack,
+        'clone': clone,
+        'write_to': write_to,
+        'size': size,
+        'parse': parse,
+        'parse_blob': parse_blob,
+        'parse_all': parse_all,
+        })
+    return rtype
