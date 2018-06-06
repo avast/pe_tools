@@ -29,7 +29,10 @@ RT_MANIFEST = 24
 
 class Version:
     def __init__(self, s):
-        self._parts = [int(part.strip()) for part in s.split(',')]
+        parts = s.split(',')
+        if len(parts) == 1:
+            parts = parts[0].split('.')
+        self._parts = [int(part.strip()) for part in parts]
         if not self._parts or len(self._parts) > 4 or any(part < 0 or part >= 2**16 for part in self._parts):
             raise ValueError('invalid version')
 
@@ -91,9 +94,9 @@ def main():
         else:
             params[name] = _IdentityReplace(value)
 
-    fin = grope.BlobIO(open(args.file, 'rb'))
+    fin = open(args.file, 'rb')
 
-    pe = parse_pe(fin, ignore_checksum=args.ignore_checksum)
+    pe = parse_pe(grope.wrap_io(fin), ignore_checksum=args.ignore_checksum)
     if pe.has_signature():
         if not args.remove_signature and not args.remove_trailer:
             print('error: the file contains a signature', file=sys.stderr)
@@ -193,7 +196,7 @@ def main():
         fout, fout_name = tempfile.mkstemp(dir=os.path.split(args.file)[0])
         fout = os.fdopen(fout, mode='w+b')
         try:
-            pe.store(fout)
+            grope.dump(pe.to_blob(), fout)
 
             fin.close()
             fout.close()
@@ -210,3 +213,6 @@ def main():
             grope.dump(pe.to_blob(), fout)
 
     return 0
+
+if __name__ == '__main__':
+    main()

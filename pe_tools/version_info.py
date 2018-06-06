@@ -74,16 +74,18 @@ class _VersionInfo:
 
     def string_file_info(self):
         r = {}
-        for fi in self.get('StringFileInfo', []).children:
-            if len(fi.name) != 8:
-                raise RuntimeError('corrupted string file info')
-            langid = int(fi.name[:4], 16)
-            cp = int(fi.name[4:], 16)
+        sfi = self.get('StringFileInfo')
+        if sfi is not None:
+            for fi in sfi.children:
+                if len(fi.name) != 8:
+                    raise RuntimeError('corrupted string file info')
+                langid = int(fi.name[:4], 16)
+                cp = int(fi.name[4:], 16)
 
-            tran = {}
-            for s in fi.children:
-                tran[s.name] = s.value
-            r[(langid, cp)] = tran
+                tran = {}
+                for s in fi.children:
+                    tran[s.name] = s.value
+                r[(langid, cp)] = tran
         return r
 
     def set_string_file_info(self, translations):
@@ -94,14 +96,21 @@ class _VersionInfo:
             children.append(_VerNode('{:04x}{:04x}'.format(langid, cp), None, tran_children))
             trans.append(struct.pack('<HH', langid, cp))
 
-        for root_child in self._root.children:
+        for i, root_child in enumerate(self._root.children):
             if root_child.name == 'StringFileInfo':
-                root_child.children = children
+                if not children:
+                    del self._root.children[i]
+                else:
+                    root_child.children = children
                 break
         else:
-            self._root.children.append(_VerNode('StringFileInfo', None, children))
+            if children:
+                self._root.children.append(_VerNode('StringFileInfo', None, children))
 
-        self.set_var('Translation', b''.join(trans))
+        if trans:
+            self.set_var('Translation', b''.join(trans))
+        else:
+            self.del_var('Translation')
 
     def set_var(self, name, value):
         for ch in self._root.children:
@@ -118,6 +127,22 @@ class _VersionInfo:
                 break
         else:
             vfi_node.children.append(_VerNode(name, value, []))
+
+    def del_var(self, name):
+        for vfi_idx, ch in enumerate(self._root.children):
+            if ch.name == 'VarFileInfo':
+                vfi_node = ch
+                break
+        else:
+            return
+
+        for i, ch in enumerate(vfi_node.children):
+            if ch.name == name:
+                del vfi_node.children[i]
+                break
+
+        if not vfi_node.children:
+            del self._root.children[vfi_idx]
 
     def pack(self):
         return _pack_node(self._root)
