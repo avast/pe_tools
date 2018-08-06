@@ -8,11 +8,11 @@ setup(
     version='0.1.1',
 
     packages=['pe_tools'],
-    install_requires=['six'],
+    install_requires=['grope'],
 
     entry_points={
         'console_scripts': [
-            'chverinfo = pe_tools.chverinfo:main',
+            'peresed = pe_tools.peresed:main',
             ],
         }
     )

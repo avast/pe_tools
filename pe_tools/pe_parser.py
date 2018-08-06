@@ -1,100 +1,96 @@
 import struct, io
 from grope import BlobIO, rope
-from .structs2 import Struct
+from .struct3 import Struct3, u8, u16, u32, u64, char
+from .rsrc import parse_pe_resources
 
-_IMAGE_FILE_HEADER = Struct(
-    'H:Machine',
-    'H:NumberOfSections',
-    'I:TimeDateStamp',
-    'I:PointerToSymbolTable',
-    'I:NumberOfSymbols',
-    'H:SizeOfOptionalHeader',
-    'H:Characteristics',
-    )
+class _IMAGE_FILE_HEADER(Struct3):
+    Machine: u16
+    NumberOfSections: u16
+    TimeDateStamp: u32
+    PointerToSymbolTable: u32
+    NumberOfSymbols: u32
+    SizeOfOptionalHeader: u16
+    Characteristics: u16
 
 IMAGE_NT_OPTIONAL_HDR32_MAGIC = 0x10b
 IMAGE_NT_OPTIONAL_HDR64_MAGIC = 0x20b
 
-_IMAGE_OPTIONAL_HEADER32 = Struct(
-    'B:MajorLinkerVersion',
-    'B:MinorLinkerVersion',
-    'I:SizeOfCode',
-    'I:SizeOfInitializedData',
-    'I:SizeOfUninitializedData',
-    'I:AddressOfEntryPoint',
-    'I:BaseOfCode',
-    'I:BaseOfData',
-    'I:ImageBase',
-    'I:SectionAlignment',
-    'I:FileAlignment',
-    'H:MajorOperatingSystemVersion',
-    'H:MinorOperatingSystemVersion',
-    'H:MajorImageVersion',
-    'H:MinorImageVersion',
-    'H:MajorSubsystemVersion',
-    'H:MinorSubsystemVersion',
-    'I:Reserved1',
-    'I:SizeOfImage',
-    'I:SizeOfHeaders',
-    'I:CheckSum',
-    'H:Subsystem',
-    'H:DllCharacteristics',
-    'I:SizeOfStackReserve',
-    'I:SizeOfStackCommit',
-    'I:SizeOfHeapReserve',
-    'I:SizeOfHeapCommit',
-    'I:LoaderFlags',
-    'I:NumberOfRvaAndSizes',
-    )
+class _IMAGE_OPTIONAL_HEADER32(Struct3):
+    MajorLinkerVersion: u8
+    MinorLinkerVersion: u8
+    SizeOfCode: u32
+    SizeOfInitializedData: u32
+    SizeOfUninitializedData: u32
+    AddressOfEntryPoint: u32
+    BaseOfCode: u32
+    BaseOfData: u32
+    ImageBase: u32
+    SectionAlignment: u32
+    FileAlignment: u32
+    MajorOperatingSystemVersion: u16
+    MinorOperatingSystemVersion: u16
+    MajorImageVersion: u16
+    MinorImageVersion: u16
+    MajorSubsystemVersion: u16
+    MinorSubsystemVersion: u16
+    Reserved1: u32
+    SizeOfImage: u32
+    SizeOfHeaders: u32
+    CheckSum: u32
+    Subsystem: u16
+    DllCharacteristics: u16
+    SizeOfStackReserve: u32
+    SizeOfStackCommit: u32
+    SizeOfHeapReserve: u32
+    SizeOfHeapCommit: u32
+    LoaderFlags: u32
+    NumberOfRvaAndSizes: u32
 
-_IMAGE_OPTIONAL_HEADER64 = Struct(
-    'B:MajorLinkerVersion',
-    'B:MinorLinkerVersion',
-    'I:SizeOfCode',
-    'I:SizeOfInitializedData',
-    'I:SizeOfUninitializedData',
-    'I:AddressOfEntryPoint',
-    'I:BaseOfCode',
-    'Q:ImageBase',
-    'I:SectionAlignment',
-    'I:FileAlignment',
-    'H:MajorOperatingSystemVersion',
-    'H:MinorOperatingSystemVersion',
-    'H:MajorImageVersion',
-    'H:MinorImageVersion',
-    'H:MajorSubsystemVersion',
-    'H:MinorSubsystemVersion',
-    'I:Reserved1',
-    'I:SizeOfImage',
-    'I:SizeOfHeaders',
-    'I:CheckSum',
-    'H:Subsystem',
-    'H:DllCharacteristics',
-    'Q:SizeOfStackReserve',
-    'Q:SizeOfStackCommit',
-    'Q:SizeOfHeapReserve',
-    'Q:SizeOfHeapCommit',
-    'I:LoaderFlags',
-    'I:NumberOfRvaAndSizes',
-    )
+class _IMAGE_OPTIONAL_HEADER64(Struct3):
+    MajorLinkerVersion: u8
+    MinorLinkerVersion: u8
+    SizeOfCode: u32
+    SizeOfInitializedData: u32
+    SizeOfUninitializedData: u32
+    AddressOfEntryPoint: u32
+    BaseOfCode: u32
+    ImageBase: u64
+    SectionAlignment: u32
+    FileAlignment: u32
+    MajorOperatingSystemVersion: u16
+    MinorOperatingSystemVersion: u16
+    MajorImageVersion: u16
+    MinorImageVersion: u16
+    MajorSubsystemVersion: u16
+    MinorSubsystemVersion: u16
+    Reserved1: u32
+    SizeOfImage: u32
+    SizeOfHeaders: u32
+    CheckSum: u32
+    Subsystem: u16
+    DllCharacteristics: u16
+    SizeOfStackReserve: u64
+    SizeOfStackCommit: u64
+    SizeOfHeapReserve: u64
+    SizeOfHeapCommit: u64
+    LoaderFlags: u32
+    NumberOfRvaAndSizes: u32
 
-_IMAGE_DATA_DIRECTORY = Struct(
-    'I:VirtualAddress',
-    'I:Size',
-    )
+class _IMAGE_DATA_DIRECTORY(Struct3):
+    VirtualAddress: u32
+    Size: u32
 
-_IMAGE_SECTION_HEADER = Struct(
-    '8s:Name',
-    'I:VirtualSize',
-    'I:VirtualAddress',
-    'I:SizeOfRawData',
-    'I:PointerToRawData',
-    'I:PointerToRelocations',
-    'I:PointerToLinenumbers',
-    'H:NumberOfRelocations',
-    'H:NumberOfLinenumbers',
-    'I:Characteristics',
-    )
+class _IMAGE_SECTION_HEADER(Struct3):
+    Name: char[8]
+    VirtualSize: u32
+    VirtualAddress: u32
+    SizeOfRawData: u32
+    PointerToRawData: u32
+    PointerToRelocations: u32
+    PointerToLinenumbers: u32
+    NumberOfRelocations: u16
+    NumberOfLinenumbers: u16
+    Characteristics: u32
 
 IMAGE_SCN_TYPE_REG                   = 0x00000000
 IMAGE_SCN_TYPE_DSECT                 = 0x00000001
@@ -192,7 +188,7 @@ def _read(blob, fmt):
     return struct.unpack(fmt, bytes(blob[:size]))
 
 class _PeFile:
-    def __init__(self, blob, ignore_checksum=False):
+    def __init__(self, blob, verify_checksum=False):
         pe_offs, = _read(blob[0x3c:], '<H')
 
         fin = BlobIO(blob[pe_offs:])
@@ -201,28 +197,30 @@ class _PeFile:
         if sig != b'PE\0\0':
             raise RuntimeError('Not a PE file: PE signature is missing.')
 
-        hdr = _IMAGE_FILE_HEADER.parse(fin)
+        hdr = _IMAGE_FILE_HEADER.unpack_from_io(fin)
         opt_sig, = struct.unpack('<H', fin.read(2))
         if opt_sig == IMAGE_NT_OPTIONAL_HDR32_MAGIC:
-            opt = _IMAGE_OPTIONAL_HEADER32.parse(fin)
+            opt = _IMAGE_OPTIONAL_HEADER32.unpack_from_io(fin)
             opt.sig = opt_sig
         elif opt_sig == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
-            opt = _IMAGE_OPTIONAL_HEADER64.parse(fin)
+            opt = _IMAGE_OPTIONAL_HEADER64.unpack_from_io(fin)
             opt.sig = opt_sig
         else:
             raise RuntimeError('Unknown optional header type.')
 
         self._checksum_offs = pe_offs + 4 + _IMAGE_FILE_HEADER.size + 4*16
 
-        if not ignore_checksum and opt.CheckSum != 0:
-            real_checksum = pe_checksum(rope(blob[:self._checksum_offs], b'\0\0\0\0', blob[self._checksum_offs + 4:]))
-            if opt.CheckSum != real_checksum:
-                raise RuntimeError('incorrect checksum')
+        if verify_checksum:
+            if opt.CheckSum == 0:
+                self.checksum_correct = False
+            else:
+                real_checksum = pe_checksum(rope(blob[:self._checksum_offs], b'\0\0\0\0', blob[self._checksum_offs + 4:]))
+                self.checksum_correct = real_checksum == opt.CheckSum
 
         if opt.FileAlignment == 0:
             raise RuntimeError('IMAGE_OPTIONAL_HEADER.FileAlignment must be nonzero')
 
-        dds = [_IMAGE_DATA_DIRECTORY.parse(fin) for dd_idx in range(opt.NumberOfRvaAndSizes)]
+        dds = [_IMAGE_DATA_DIRECTORY.unpack_from_io(fin) for dd_idx in range(opt.NumberOfRvaAndSizes)]
 
         def make_pe_section(idx, hdr):
             name = hdr.Name.rstrip(b'\0')
@@ -239,7 +237,7 @@ class _PeFile:
 
             return _PeSection(hdr, data)
 
-        sections = [make_pe_section(sec_idx, _IMAGE_SECTION_HEADER.parse(fin)) for sec_idx in range(hdr.NumberOfSections)]
+        sections = [make_pe_section(sec_idx, _IMAGE_SECTION_HEADER.unpack_from_io(fin)) for sec_idx in range(hdr.NumberOfSections)]
 
         present_secs = sorted((sec for sec in sections if sec.hdr.SizeOfRawData != 0), key=lambda sec: sec.hdr.PointerToRawData)
         if not present_secs:
@@ -337,6 +335,21 @@ class _PeFile:
 
         return slice(dd.VirtualAddress, dd.VirtualAddress + dd.Size)
 
+    def get_directory_contents(self, idx):
+        dd = self.find_directory(idx)
+        if dd is None:
+            return None
+
+        return self.get_vm(dd.start, dd.stop)
+
+    def parse_resources(self):
+        vm_slice = self.find_directory(IMAGE_DIRECTORY_ENTRY_RESOURCE)
+        if vm_slice is None:
+            return None
+
+        data = self.get_vm(vm_slice.start, vm_slice.stop)
+        return parse_pe_resources(data, vm_slice.start)
+
     def _get_directory_section(self, dd_idx):
         if dd_idx >= len(self._data_directories):
             return None
@@ -404,16 +417,16 @@ class _PeFile:
         return all((sec.hdr.Characteristics & IMAGE_SCN_MEM_DISCARDABLE) != 0 for sec in self._sections[sec_idx+1:])
 
     def resize_directory(self, idx, size):
-        sec_idx, addr = self._resize_directory(idx, size)
+        _, addr = self._resize_directory(idx, size)
         return addr
 
     def set_directory(self, idx, blob):
-        sec_idx, addr = self._resize_directory(idx, len(blob))
+        sec_idx, _ = self._resize_directory(idx, len(blob))
 
         sec = self._sections[sec_idx]
         sec.data = blob
 
-    def to_blob(self):
+    def to_blob(self, update_checksum=False):
         self._opt_header.CheckSum = 0
         self._opt_header.SizeOfImage = max(self._mem_align(sec.hdr.VirtualAddress + sec.hdr.VirtualSize) for sec in self._sections)
 
@@ -447,6 +460,8 @@ class _PeFile:
 
         new_file.append(b'\0'*header_pad)
         for sec in self._sections:
+            if sec.data is None:
+                continue
             new_file.append(sec.data)
             with_pad = self._file_align(len(sec.data))
             pad = with_pad - len(sec.data)
@@ -456,9 +471,23 @@ class _PeFile:
         new_file.append(self._trailer)
 
         out_blob = rope(*new_file)
-        new_checksum = pe_checksum(out_blob)
+        if update_checksum:
+            new_checksum = pe_checksum(out_blob)
+        else:
+            new_checksum = 0
 
         return rope(out_blob[:self._checksum_offs], struct.pack('<I', new_checksum), out_blob[self._checksum_offs + 4:])
 
-def parse_pe(blob, ignore_checksum=False):
-    return _PeFile(blob, ignore_checksum=ignore_checksum)
+    def to_bytes(self, update_checksum=False):
+        return bytes(self.to_blob(update_checksum=update_checksum))
+
+def parse_pe(blob, verify_checksum=False):
+    """Parse a PE file and return a PeFile object
+    
+    Expects either a bytes object or a grope.rope object consisting
+    only of bytes objects (the latter is recommended).
+
+    Set `verify_checksum=True` to add `checksum_correct` member to
+    the returned object.
+    """
+    return _PeFile(blob, verify_checksum=verify_checksum)

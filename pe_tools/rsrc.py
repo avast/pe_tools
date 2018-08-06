@@ -1,67 +1,70 @@
-from .structs2 import Struct
 from grope import BlobIO, rope
 from .utils import *
+from .struct3 import Struct3, u16, u32
 import six, time, struct
+#from typing import NamedTuple
 
-RT_CURSOR = 1
-RT_BITMAP = 2
-RT_ICON = 3
-RT_MENU = 4
-RT_DIALOG = 5
-RT_STRING = 6
-RT_FONTDIR = 7
-RT_FONT = 8
-RT_ACCELERATOR = 9
-RT_RCDATA = 10
-RT_MESSAGETABLE = 11
-RT_GROUP_CURSOR = 12
-RT_GROUP_ICON = 14
-RT_VERSION = 16
-RT_DLGINCLUDE = 17
-RT_PLUGPLAY = 19
-RT_VXD = 20
-RT_ANICURSOR = 21
-RT_ANIICON = 22
-RT_HTML = 23
-RT_MANIFEST = 24
+class KnownResourceTypes:
+    RT_CURSOR = 1
+    RT_BITMAP = 2
+    RT_ICON = 3
+    RT_MENU = 4
+    RT_DIALOG = 5
+    RT_STRING = 6
+    RT_FONTDIR = 7
+    RT_FONT = 8
+    RT_ACCELERATOR = 9
+    RT_RCDATA = 10
+    RT_MESSAGETABLE = 11
+    RT_GROUP_CURSOR = 12
+    RT_GROUP_ICON = 14
+    RT_VERSION = 16
+    RT_DLGINCLUDE = 17
+    RT_PLUGPLAY = 19
+    RT_VXD = 20
+    RT_ANICURSOR = 21
+    RT_ANIICON = 22
+    RT_HTML = 23
+    RT_MANIFEST = 24
 
-_RESOURCE_DIRECTORY_TABLE = Struct(
-    "I:Characteristics",
-    "I:Timestamp",
-    "H:Major",
-    "H:Minor",
-    "H:NumberOfNameEntries",
-    "H:NumberOfIdEntries",
-    )
+    @classmethod
+    def get_type_name(cls, num):
+        for k in dir(cls):
+            if k.startswith('RT_') and getattr(cls, k, None) == num:
+                return k
+        return str(num)
 
-_RESOURCE_DIRECTORY_ENTRY = Struct(
-    "I:NameOrId",
-    "I:Offset",
-    )
+class _RESOURCE_DIRECTORY_TABLE(Struct3):
+    Characteristics: u32
+    Timestamp: u32
+    Major: u16
+    Minor: u16
+    NumberOfNameEntries: u16
+    NumberOfIdEntries: u16
 
-_RESOURCE_DATA_ENTRY = Struct(
-    "I:DataRva",
-    "I:Size",
-    "I:Codepage",
-    "I:Reserved"
-    )
+class _RESOURCE_DIRECTORY_ENTRY(Struct3):
+    NameOrId: u32
+    Offset: u32
 
-_STRING_HEADER = Struct(
-    "H:Length",
-    )
+class _RESOURCE_DATA_ENTRY(Struct3):
+    DataRva: u32
+    Size: u32
+    Codepage: u32
+    Reserved: u32
 
-_RES_HEADER_SIZES = Struct(
-    "I:DataSize",
-    "I:HeaderSize",
-    )
+class _STRING_HEADER(Struct3):
+    Length: u16
 
-_RES_HEADER = Struct(
-    "I:DataVersion",
-    "H:MemoryFlags",
-    "H:LanguageId",
-    "I:Version",
-    "I:Characteristics",
-    )
+class _RES_HEADER_SIZES(Struct3):
+    DataSize: u32
+    HeaderSize: u32
+
+class _RES_HEADER(Struct3):
+    DataVersion: u32
+    MemoryFlags: u16
+    LanguageId: u16
+    Version: u32
+    Characteristics: u32
 
 def _parse_prelink_name(blob, align=False):
     name, = struct.unpack('<H', bytes(blob[:2]))
@@ -83,7 +86,7 @@ def _parse_prelink_name(blob, align=False):
 
 
 def _parse_one_prelink_res(blob):
-    hdr_sizes = _RES_HEADER_SIZES.parse_blob(blob)
+    hdr_sizes = _RES_HEADER_SIZES.unpack_from(blob)
     if hdr_sizes.HeaderSize < hdr_sizes.size:
         raise RuntimeError('corrupted header')
 
@@ -94,7 +97,7 @@ def _parse_one_prelink_res(blob):
     type, hdr_blob = _parse_prelink_name(hdr_blob, align=False)
     name, hdr_blob = _parse_prelink_name(hdr_blob, align=True)
 
-    hdr = _RES_HEADER.parse_blob(hdr_blob)
+    hdr = _RES_HEADER.unpack_from(hdr_blob)
     hdr.type = type
     hdr.name = name
     return hdr, data_blob, next_blob
@@ -111,11 +114,11 @@ def parse_prelink_resources(blob):
 
 def parse_pe_resources(blob, base):
     def parse_string(offs):
-        hdr = _STRING_HEADER.parse_blob(blob[offs:])
+        hdr = _STRING_HEADER.unpack_from(blob[offs:])
         return bytes(blob[offs+_STRING_HEADER.size:offs+_STRING_HEADER.size+hdr.Length*2]).decode('utf-16le')
 
     def parse_data(offs):
-        entry = _RESOURCE_DATA_ENTRY.parse_blob(blob[offs:])
+        entry = _RESOURCE_DATA_ENTRY.unpack_from(blob[offs:])
 
         if entry.DataRva < base:
             raise RuntimeError('resource is outside the resource blob')
@@ -130,9 +133,9 @@ def parse_pe_resources(blob, base):
 
         fin = BlobIO(blob[offs:])
 
-        node = _RESOURCE_DIRECTORY_TABLE.parse(fin)
-        name_entries = [_RESOURCE_DIRECTORY_ENTRY.parse(fin) for i in range(node.NumberOfNameEntries)]
-        id_entries = [_RESOURCE_DIRECTORY_ENTRY.parse(fin) for i in range(node.NumberOfIdEntries)]
+        node = _RESOURCE_DIRECTORY_TABLE.unpack_from_io(fin)
+        name_entries = [_RESOURCE_DIRECTORY_ENTRY.unpack_from_io(fin) for i in range(node.NumberOfNameEntries)]
+        id_entries = [_RESOURCE_DIRECTORY_ENTRY.unpack_from_io(fin) for i in range(node.NumberOfIdEntries)]
 
         for entry in name_entries:
             name = parse_string(entry.NameOrId & ~(1<<31))
@@ -163,7 +166,7 @@ class _PrepackedResources:
         def _transform(ent):
             if not isinstance(ent, _RESOURCE_DATA_ENTRY):
                 return ent
-            return ent.clone(DataRva=ent.DataRva + base)
+            return _RESOURCE_DATA_ENTRY(ent, DataRva=ent.DataRva + base)
 
         ents = [_transform(ent).pack() for ent in self._entries]
         return b''.join(ents) + self._strings + bytes(self._blobs)

@@ -1,40 +1,119 @@
-# pe-tools
+# pe_tools
 
-A toolkit for parsing/writing PE files and some of its internal structures.
+A cross-platform toolkit for parsing/writing PE files.
 
-Requires Python3. Install using the following command.
+Requires Python 3.6+. Install using the following command.
 
-    python3 setup.py install
+    pip install pe_tools
 
-This installs the `pe_tools` module you can use in your Python scripts and command line tools.
+This installs the `pe_tools` module you can use in your Python scripts and
+command line tools.
 
-## Change version info
+## Getting started
 
-Modifies version info embedded in a PE file.
+Parse a PE file by calling `parse_pe`. The resulting PeFile object then contains
+information about the file and allows the file to be reserialized.
 
-    chverinfo [--rebrand <res-file>] [-o <out-file>] <file> [key=value]...
+    from pe_tools import parse_pe
+    from grope import rope
 
-Key can be any of the following values.
+    with open('file.exe', 'rb') as fin:
+        pe = parse_pe(grope.wrap_io(fin))
 
- * FileVersion
- * ProductVersion
- * FileDescription
- * InternalName
- * LegalCopyright
- * OriginalFilename
- * ProductName
+        # use `pe` here ...
 
-For example, to change FileVersion to 1.2.3.4, run the following command.
+        with open('newfile.exe', 'wb') as fout:
+            grope.dump(pe.to_blob(), fout)
 
-    chverinfo myfile.exe FileVersion="1, 2, 3, 4"
+The argument to `parse_pe` is either a bytes object or a [`grope.rope`][1].
+The latter is recommended, as it allows you to parse and edit huge pe files
+with little overhead. Similarly, you can either serialize to bytes with
+`to_bytes()` method or to a `grope.rope` with `to_blob()`. Use `grope.dump`
+to efficiently write the blob to a file.
 
-To modify existing version string, use "/pattern/sub/" syntax.
+  [1]: https://github.com/avakar/grope
 
-    chverinfo myfile.exe CompanyName="/avast!?/AVG/"
+## Resource editor
 
-You can save command line arguments to a text file, one argument per line, and then pass the name of this file.
+As an example of its usage, the package bundles a command line utility,
+`peresed`, which provides means to edit resources in an existing PE file.
 
-    chverinfo myfile.exe @params.txt
+You can either
 
-The `--rebrand` option allows you to apply a completely different resource section using a compile resource file.
-Rebrand is performed before version info changes.
+* apply your own resources from a `.res` file compiled by `rc.exe`,
+* add manifest dependencies, and/or
+* edit the version info.
+
+    peresed [options and commands] [-o OUTPUT] FILE
+
+By default, the tool will edit the file in-place. The `-o` option allows you to
+set an alternative output file.
+
+Pass `--clear` to remove all existing resource entries, except for the manifest,
+from the file. This can be useful if you're completely rebranding the binary,
+for example. This also removes the version info. To remove the manifest, use
+`--clear-manifest`.
+
+By default, the checksum in the PE file will not be updated, since you'll be
+signing the file anyway. If you want it updated, pass `--update-checksum`.
+
+### Editor commands
+
+To apply new resource entries, use `--apply` and pass the name of the `.res`
+file. You can use Visual Studio's `rc.exe` tool to create one. For each entry
+in the `.res` file, the corresponding entry will be created or replaced
+in the existing resources. The entries are identified by their type, name and
+language. Use `--clear` if you don't want to keep any unmatched entries.
+
+You can add a manifest dependency using `--add-dependency`. If the file already
+contains a manifest, the manifest is edited. Otherwise an empty manifest
+is created.
+
+Finally, version info strings can be edited. Use `--set-version` followed by
+a `key=value` pair, where `key` is the name of the version info field to change,
+and `value` is either a string to replace the existing value with,
+or a regex substitution of the form `/pattern/sub/`, allowing you to only
+replace specific parts of the value.
+
+Typically, the key is one of the followinig values (case matters).
+
+* FileVersion
+* ProductVersion
+* FileDescription
+* InternalName
+* LegalCopyright
+* OriginalFilename
+* ProductName
+
+The first two are treated specially and will cause the corresponding
+values in the fixed version info structure to be updated too. The values
+for these fields must be in the form `"1, 2, 3, 4"`.
+
+Each command can be specified multiple times. All `--apply` commands are
+performed first, then all `--add-dependency`, then all `--set-version`.
+
+### Examples
+
+To make an old program use the XP visual styles, add dependency on comctl32
+version 6.
+
+    peresed -M "type=win32 name=Microsoft.Windows.Common-Controls \
+    version=6.0.0.0 processorArchitecture=* publicKeyToken=6595b64144ccf1df \
+    language=*" file.exe
+
+To change the version of the file, change its FileVersion member.
+
+    peresed -V "FileVersion=1, 2, 3, 4" file.exe
+
+To change a program's icon, compile a new resource file containig the icon
+and apply it. The `new_icon.rc` file might look like this.
+
+    100 ICON "new_icon.ico"
+
+Compile it with `rc.exe`.
+
+    rc.exe new_icon.rc
+
+Apply the new resource file to your PE file.
+
+    peresed -A new_icon.res file.exe

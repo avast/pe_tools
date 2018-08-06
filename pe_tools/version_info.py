@@ -1,42 +1,55 @@
-from .structs2 import Struct
+from .struct3 import Struct3, u16, u32
 from .utils import align4
 from grope import rope
 import six, struct
 
-_VS_FIXEDFILEINFO = Struct(
-    "I:dwSignature",
-    "I:dwStrucVersion",
-    "I:dwFileVersionMS",
-    "I:dwFileVersionLS",
-    "I:dwProductVersionMS",
-    "I:dwProductVersionLS",
-    "I:dwFileFlagsMask",
-    "I:dwFileFlags",
-    "I:dwFileOS",
-    "I:dwFileType",
-    "I:dwFileSubtype",
-    "I:dwFileDateMS",
-    "I:dwFileDateLS",
-    )
+class _VS_FIXEDFILEINFO(Struct3):
+    dwSignature: u32
+    dwStrucVersion: u32
+    dwFileVersionMS: u32
+    dwFileVersionLS: u32
+    dwProductVersionMS: u32
+    dwProductVersionLS: u32
+    dwFileFlagsMask: u32
+    dwFileFlags: u32
+    dwFileOS: u32
+    dwFileType: u32
+    dwFileSubtype: u32
+    dwFileDateMS: u32
+    dwFileDateLS: u32
 
-def _set_file_version(self, major, minor=0, patch=0, build=0):
-    self.dwFileVersionMS = (major << 16) | minor
-    self.dwFileVersionLS = (patch << 16) | build
+    @property
+    def file_version(self):
+        return '{}.{}.{}.{}'.format(
+            self.dwFileVersionMS >> 16,
+            self.dwFileVersionMS & 0xffff,
+            self.dwFileVersionLS >> 16,
+            self.dwFileVersionLS & 0xffff,
+        )
 
-def _set_product_version(self, major, minor=0, patch=0, build=0):
-    self.dwProductVersionMS = (major << 16) | minor
-    self.dwProductVersionLS = (patch << 16) | build
+    @property
+    def product_version(self):
+        return '{}.{}.{}.{}'.format(
+            self.dwProductVersionMS >> 16,
+            self.dwProductVersionMS & 0xffff,
+            self.dwProductVersionLS >> 16,
+            self.dwProductVersionLS & 0xffff,
+        )
 
-_VS_FIXEDFILEINFO.set_file_version = _set_file_version
-_VS_FIXEDFILEINFO.set_product_version = _set_product_version
+    def set_file_version(self, major, minor=0, patch=0, build=0):
+        self.dwFileVersionMS = (major << 16) | minor
+        self.dwFileVersionLS = (patch << 16) | build
+
+    def set_product_version(self, major, minor=0, patch=0, build=0):
+        self.dwProductVersionMS = (major << 16) | minor
+        self.dwProductVersionLS = (patch << 16) | build
 
 FIXEDFILEINFO_SIG = 0xFEEF04BD
 
-_NODE_HEADER = Struct(
-    'H:wLength',
-    'H:wValueLength',
-    'H:wType',
-    )
+class _NODE_HEADER(Struct3):
+    wLength: u16
+    wValueLength: u16
+    wType: u16
 
 class _VerNode:
     def __init__(self, key, value, children):
@@ -44,8 +57,10 @@ class _VerNode:
         self.value = value
         self.children = children
 
-class _VersionInfo:
-    def __init__(self, root):
+class VersionInfo:
+    def __init__(self, root=None):
+        if root is None:
+            root = _VerNode('', _VS_FIXEDFILEINFO().pack(), [])
         self._root = root
 
     def get(self, name, default=None):
@@ -63,10 +78,9 @@ class _VersionInfo:
         return cur
 
     def get_fixed_info(self):
-        fi = _VS_FIXEDFILEINFO.parse_all(self._root.value)
+        fi = _VS_FIXEDFILEINFO.unpack(self._root.value)
         if fi.dwSignature != FIXEDFILEINFO_SIG:
             raise ValueError('FIXEDFILEINFO_SIG mismatch')
-        fi.set_file_version
         return fi
 
     def set_fixed_info(self, fi):
@@ -188,10 +202,10 @@ def parse_version_info(blob):
     root, next = _parse_one(blob)
     if next:
         raise RuntimeError('extra data in the version info blob')
-    return _VersionInfo(root)
+    return VersionInfo(root)
 
 def _parse_one(blob):
-    hdr = _NODE_HEADER.parse_blob(blob)
+    hdr = _NODE_HEADER.unpack_from(blob)
     next = blob[align4(hdr.wLength):]
     blob = blob[:hdr.wLength]
 
