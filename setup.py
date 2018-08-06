@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name='pe-tools',
-    version='0.1.1',
+    version='0.2',
 
     packages=['pe_tools'],
     install_requires=['grope'],
