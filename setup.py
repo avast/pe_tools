@@ -7,6 +7,10 @@ setup(
     name='pe-tools',
     version='0.2',
 
+    url='https://github.com/avast/pe_tools',
+    maintainer='Martin Vejnár',
+    maintainer_email='martin.vejnar@avast.com',
+
     packages=['pe_tools'],
     install_requires=['grope'],
 
