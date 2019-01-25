@@ -171,6 +171,8 @@ def pe_checksum(blob):
         r += sum(words)
         blob = blob[0x1000:]
 
+    if len(blob) % 2 != 0:
+        blob = rope(blob, b'\0')
     words = struct.unpack('<' + 'H'*(len(blob) // 2), bytes(blob))
     r += sum(words)
 
