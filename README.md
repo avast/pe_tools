@@ -117,3 +117,48 @@ Compile it with `rc.exe`.
 Apply the new resource file to your PE file.
 
     peresed -A new_icon.res file.exe
+
+### All options
+
+    usage: peresed [-h] [--remove-signature] [--ignore-trailer] [--remove-trailer]
+                [--update-checksum] [--clear] [--clear-manifest] [--print-tree]
+                [--print-version] [--apply RES] [--add-dependency DEP]
+                [--set-version STR] [--output OUTPUT]
+                file
+
+    Parses and edits resources in Windows executable (PE) files.
+
+    positional arguments:
+    file                  the PE file to parse and edit
+
+    optional arguments:
+    -h, --help            show this help message and exit
+    --remove-signature    remove the signature. If the file contains one,
+                            editing the file will fail
+    --ignore-trailer      keep trailing data (typically in a setup program)
+                            intact, move them if necessary
+    --remove-trailer      remove any trailing data from the output
+    --update-checksum     set the correct checksum (can be slow on large files),
+                            zero it out otherwise
+    --clear, -C           remove existing resources, except for the manifest
+    --clear-manifest      remove the manifest resource
+    --output OUTPUT, -o OUTPUT
+                            write the edited contents to OUTPUT instead of editing
+                            the input file in-place
+
+    informational (applied before any edits):
+    --print-tree, -t      prints the outline of the resource tree
+    --print-version, -v   prints all version info structures
+
+    editor commands (can be used multiple times):
+    --apply RES, -A RES   apply a custom .res file, overwrite any matching
+                            resource entries
+    --add-dependency DEP, -M DEP
+                            add dependency. DEP should be a space separated list
+                            of key=value pairs, e.g. "type=win32
+                            name=Microsoft.Windows.Common-Controls version=6.0.0.0
+                            processorArchitecture=*
+                            publicKeyToken=6595b64144ccf1df language=*"
+    --set-version STR, -V STR
+                            updates the specified version-info field, e.g.
+                            FileVersion="1, 2, 3, 4"
