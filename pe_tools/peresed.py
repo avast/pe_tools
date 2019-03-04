@@ -125,9 +125,7 @@ def main():
         return 3
 
     if args.clear:
-        for k in resources:
-            if k != RT_MANIFEST:
-                del resources[k]
+        resources = { k: v for k, v in resources.items() if k == RT_MANIFEST }
 
     if args.clear_manifest:
         if RT_MANIFEST in resources:
