@@ -19,8 +19,8 @@ class _VS_FIXEDFILEINFO(Struct3):
     dwFileDateLS: u32
 
     @property
-    def file_version(self):
-        return '{}.{}.{}.{}'.format(
+    def file_version_tuple(self):
+        return (
             self.dwFileVersionMS >> 16,
             self.dwFileVersionMS & 0xffff,
             self.dwFileVersionLS >> 16,
@@ -28,13 +28,21 @@ class _VS_FIXEDFILEINFO(Struct3):
         )
 
     @property
-    def product_version(self):
-        return '{}.{}.{}.{}'.format(
+    def product_version_tuple(self):
+        return (
             self.dwProductVersionMS >> 16,
             self.dwProductVersionMS & 0xffff,
             self.dwProductVersionLS >> 16,
             self.dwProductVersionLS & 0xffff,
         )
+
+    @property
+    def file_version(self):
+        return '{}.{}.{}.{}'.format(*self.file_version_tuple)
+
+    @property
+    def product_version(self):
+        return '{}.{}.{}.{}'.format(*self.product_version_tuple)
 
     def set_file_version(self, major, minor=0, patch=0, build=0):
         self.dwFileVersionMS = (major << 16) | minor

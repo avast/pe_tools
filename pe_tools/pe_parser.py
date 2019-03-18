@@ -2,6 +2,8 @@ import struct, io
 from grope import BlobIO, rope
 from .struct3 import Struct3, u8, u16, u32, u64, char
 from .rsrc import parse_pe_resources
+from .rsrc import KnownResourceTypes
+from .version_info import parse_version_info
 
 class _IMAGE_FILE_HEADER(Struct3):
     Machine: u16
@@ -351,6 +353,29 @@ class _PeFile:
 
         data = self.get_vm(vm_slice.start, vm_slice.stop)
         return parse_pe_resources(data, vm_slice.start)
+
+    def enum_version_infos(self):
+        res = self.parse_resources()
+        for name, v in res[KnownResourceTypes.RT_VERSION].items():
+            for lang, v in v.items():
+                yield name, lang, parse_version_info(v)
+
+    def get_version_info(self):
+        vis = list(self.enum_version_infos())
+        if not vis:
+            return None
+
+        if len(vis) > 1:
+            raise RuntimeError('multiple version info records')
+
+        _, _, vi = vis[0]
+        return vi
+
+    def get_file_version(self):
+        return self.get_version_info().get_fixed_info().file_version_tuple
+
+    def get_product_version(self):
+        return self.get_version_info().get_fixed_info().product_version_tuple
 
     def _get_directory_section(self, dd_idx):
         if dd_idx >= len(self._data_directories):
