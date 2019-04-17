@@ -356,9 +356,10 @@ class _PeFile:
 
     def enum_version_infos(self):
         res = self.parse_resources()
-        for name, v in res[KnownResourceTypes.RT_VERSION].items():
-            for lang, v in v.items():
-                yield name, lang, parse_version_info(v)
+        if not res:
+            return
+        for lang, v in res.get(KnownResourceTypes.RT_VERSION, {}).get(1, {}).items():
+            yield lang, parse_version_info(v)
 
     def get_version_info(self):
         vis = list(self.enum_version_infos())
@@ -368,14 +369,16 @@ class _PeFile:
         if len(vis) > 1:
             raise RuntimeError('multiple version info records')
 
-        _, _, vi = vis[0]
+        _, vi = vis[0]
         return vi
 
     def get_file_version(self):
-        return self.get_version_info().get_fixed_info().file_version_tuple
+        vi = self.get_version_info()
+        return vi.get_fixed_info().file_version_tuple if vi else None
 
     def get_product_version(self):
-        return self.get_version_info().get_fixed_info().product_version_tuple
+        vi = self.get_version_info()
+        return vi.get_fixed_info().product_version_tuple if vi else None
 
     def _get_directory_section(self, dd_idx):
         if dd_idx >= len(self._data_directories):
