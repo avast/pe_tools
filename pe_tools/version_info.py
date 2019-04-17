@@ -207,9 +207,7 @@ def _pack_node(node):
     return rope(hdr.pack(), name, name_pad, value, value_pad, children)
 
 def parse_version_info(blob):
-    root, next = _parse_one(blob)
-    if next:
-        raise RuntimeError('extra data in the version info blob')
+    root, _ = _parse_one(blob)
     return VersionInfo(root)
 
 def _parse_one(blob):
