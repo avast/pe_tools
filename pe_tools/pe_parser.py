@@ -291,7 +291,8 @@ class _PeFile:
                 sec_offs = start - sec.hdr.VirtualAddress
                 init_size = min(sec.hdr.SizeOfRawData - sec_offs, stop - start)
                 uninit_size = stop - start - init_size
-
+                if len(sec.data) < sec_offs + init_size:
+                    raise RuntimeError('PE file corrupt: missing section content')
                 return rope(sec.data[sec_offs:sec_offs + init_size], b'\0'*uninit_size)
 
     def has_trailer(self):
@@ -354,23 +355,21 @@ class _PeFile:
         data = self.get_vm(vm_slice.start, vm_slice.stop)
         return parse_pe_resources(data, vm_slice.start)
 
-    def enum_version_infos(self):
+    def _get_version_info_dict(self):
         res = self.parse_resources()
         if not res:
             return
-        for lang, v in res.get(KnownResourceTypes.RT_VERSION, {}).get(1, {}).items():
-            yield lang, parse_version_info(v)
+        return res.get(KnownResourceTypes.RT_VERSION, {}).get(1, {})
 
     def get_version_info(self):
-        vis = list(self.enum_version_infos())
+        vis = self._get_version_info_dict()
         if not vis:
             return None
 
-        if len(vis) > 1:
-            raise RuntimeError('multiple version info records')
-
-        _, vi = vis[0]
-        return vi
+        vi = vis.get(0x0409)
+        if vi is None:
+            vi = vis[0]
+        return parse_version_info(vi)
 
     def get_file_version(self):
         vi = self.get_version_info()
