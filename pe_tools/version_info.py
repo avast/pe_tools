@@ -211,6 +211,9 @@ def parse_version_info(blob):
     return VersionInfo(root)
 
 def _parse_one(blob):
+    if len(blob) < _NODE_HEADER.size:
+        return None, None
+
     hdr = _NODE_HEADER.unpack_from(blob)
     next = blob[align4(hdr.wLength):]
     blob = blob[:hdr.wLength]
@@ -235,7 +238,8 @@ def _parse_one(blob):
     children = []
     while blob:
         node, blob = _parse_one(blob)
-        children.append(node)
+        if node is not None:
+            children.append(node)
 
     return _VerNode(key, value, children), next
 
