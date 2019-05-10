@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name='pe_tools',
-    version='0.2.5',
+    version='0.2.6',
 
     url='https://github.com/avast/pe_tools',
     maintainer='Martin Vejnár',
