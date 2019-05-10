@@ -263,7 +263,6 @@ class _PeFile:
         self._data_directories = dds
         self._sections = sections
 
-        self._trailer_offset = end_of_image
         self._trailer = blob[end_of_image:]
 
         self._check_vm_overlaps()
@@ -313,10 +312,12 @@ class _PeFile:
         if dd.Size == 0:
             return
 
-        if dd.VirtualAddress + dd.Size != self._trailer_offset + len(self._trailer):
+        end_of_image = max(sec.hdr.PointerToRawData + sec.hdr.SizeOfRawData for sec in self._sections if sec.hdr.SizeOfRawData != 0)
+
+        if dd.VirtualAddress + dd.Size != end_of_image + len(self._trailer):
             raise RuntimeError('signature is not at the end of the file')
 
-        if dd.VirtualAddress < self._trailer_offset:
+        if dd.VirtualAddress < end_of_image:
             raise RuntimeError('signature is not contained in the pe trailer')
 
         self._trailer = self._trailer[:-dd.Size]
