@@ -15,7 +15,7 @@ Parse a PE file by calling `parse_pe`. The resulting PeFile object then contains
 information about the file and allows the file to be reserialized.
 
     from pe_tools import parse_pe
-    from grope import rope
+    import grope
 
     with open('file.exe', 'rb') as fin:
         pe = parse_pe(grope.wrap_io(fin))
