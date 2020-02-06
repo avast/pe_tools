@@ -66,7 +66,7 @@ class _RES_HEADER(Struct3):
     Version: u32
     Characteristics: u32
 
-def _parse_prelink_name(blob, align=False):
+def _parse_prelink_name(blob):
     name, = struct.unpack('<H', bytes(blob[:2]))
     if name == 0xffff:
         name, = struct.unpack('<H', bytes(blob[2:4]))
@@ -79,7 +79,7 @@ def _parse_prelink_name(blob, align=False):
             while i < 64:
                 if ch[i:i+2] == b'\0\0':
                     r.append(ch[:i])
-                    return b''.join(r).decode('utf-16le'), blob[align4(i+2) if align else i+2:]
+                    return b''.join(r).decode('utf-16le'), blob[i+2:]
                 i += 2
             r.append(ch)
             blob = blob[64:]
@@ -90,12 +90,15 @@ def _parse_one_prelink_res(blob):
     if hdr_sizes.HeaderSize < hdr_sizes.size:
         raise RuntimeError('corrupted header')
 
-    hdr_blob = blob[hdr_sizes.size:hdr_sizes.HeaderSize]
+    full_hdr_blob = blob[hdr_sizes.size:hdr_sizes.HeaderSize]
+    hdr_blob = full_hdr_blob
     data_blob = blob[hdr_sizes.HeaderSize:hdr_sizes.HeaderSize + hdr_sizes.DataSize]
     next_blob = blob[align4(hdr_sizes.HeaderSize + hdr_sizes.DataSize):]
 
-    type, hdr_blob = _parse_prelink_name(hdr_blob, align=False)
-    name, hdr_blob = _parse_prelink_name(hdr_blob, align=True)
+    type, hdr_blob = _parse_prelink_name(hdr_blob)
+    name, hdr_blob = _parse_prelink_name(hdr_blob)
+
+    hdr_blob = full_hdr_blob[align4(len(full_hdr_blob) - len(hdr_blob)):]
 
     hdr = _RES_HEADER.unpack_from(hdr_blob)
     hdr.type = type

@@ -263,7 +263,6 @@ class _PeFile:
         self._data_directories = dds
         self._sections = sections
 
-        self._trailer_offset = end_of_image
         self._trailer = blob[end_of_image:]
 
         self._check_vm_overlaps()
@@ -291,7 +290,8 @@ class _PeFile:
                 sec_offs = start - sec.hdr.VirtualAddress
                 init_size = min(sec.hdr.SizeOfRawData - sec_offs, stop - start)
                 uninit_size = stop - start - init_size
-
+                if len(sec.data) < sec_offs + init_size:
+                    raise RuntimeError('PE file corrupt: missing section content')
                 return rope(sec.data[sec_offs:sec_offs + init_size], b'\0'*uninit_size)
 
     def has_trailer(self):
@@ -312,10 +312,12 @@ class _PeFile:
         if dd.Size == 0:
             return
 
-        if dd.VirtualAddress + dd.Size != self._trailer_offset + len(self._trailer):
+        end_of_image = max(sec.hdr.PointerToRawData + sec.hdr.SizeOfRawData for sec in self._sections if sec.hdr.SizeOfRawData != 0)
+
+        if dd.VirtualAddress + dd.Size != end_of_image + len(self._trailer):
             raise RuntimeError('signature is not at the end of the file')
 
-        if dd.VirtualAddress < self._trailer_offset:
+        if dd.VirtualAddress < end_of_image:
             raise RuntimeError('signature is not contained in the pe trailer')
 
         self._trailer = self._trailer[:-dd.Size]
@@ -354,28 +356,29 @@ class _PeFile:
         data = self.get_vm(vm_slice.start, vm_slice.stop)
         return parse_pe_resources(data, vm_slice.start)
 
-    def enum_version_infos(self):
+    def _get_version_info_dict(self):
         res = self.parse_resources()
-        for name, v in res[KnownResourceTypes.RT_VERSION].items():
-            for lang, v in v.items():
-                yield name, lang, parse_version_info(v)
+        if not res:
+            return
+        return res.get(KnownResourceTypes.RT_VERSION, {}).get(1, {})
 
     def get_version_info(self):
-        vis = list(self.enum_version_infos())
+        vis = self._get_version_info_dict()
         if not vis:
             return None
 
-        if len(vis) > 1:
-            raise RuntimeError('multiple version info records')
-
-        _, _, vi = vis[0]
-        return vi
+        vi = vis.get(0x0409)
+        if vi is None:
+            vi = vis[0]
+        return parse_version_info(vi)
 
     def get_file_version(self):
-        return self.get_version_info().get_fixed_info().file_version_tuple
+        vi = self.get_version_info()
+        return vi.get_fixed_info().file_version_tuple if vi else None
 
     def get_product_version(self):
-        return self.get_version_info().get_fixed_info().product_version_tuple
+        vi = self.get_version_info()
+        return vi.get_fixed_info().product_version_tuple if vi else None
 
     def _get_directory_section(self, dd_idx):
         if dd_idx >= len(self._data_directories):
