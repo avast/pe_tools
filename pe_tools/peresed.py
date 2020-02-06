@@ -132,10 +132,10 @@ def main():
             del resources[RT_MANIFEST]
 
     for res_file in args.apply:
-        fin = open(res_file, 'rb')
-        # must not close fin until the ropes are gone
+        res_fin = open(res_file, 'rb')
+        # must not close res_fin until the ropes are gone
 
-        r = parse_prelink_resources(grope.wrap_io(fin))
+        r = parse_prelink_resources(grope.wrap_io(res_fin))
         for resource_type in r:
             for name in r[resource_type]:
                 for lang in r[resource_type][name]:
