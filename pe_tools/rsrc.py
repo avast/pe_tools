@@ -1,8 +1,8 @@
 from grope import BlobIO, rope
 from .utils import *
 from .struct3 import Struct3, u16, u32
-import six, time, struct
-#from typing import NamedTuple
+import time, struct
+
 
 class KnownResourceTypes:
     RT_CURSOR = 1
@@ -176,8 +176,8 @@ class _PrepackedResources:
 
 def _prepack(rsrc):
     if isinstance(rsrc, dict):
-        name_keys = [key for key in rsrc.keys() if isinstance(key, six.string_types)]
-        id_keys = [key for key in rsrc.keys() if not isinstance(key, six.string_types)]
+        name_keys = [key for key in rsrc.keys() if isinstance(key, str)]
+        id_keys = [key for key in rsrc.keys() if not isinstance(key, str)]
 
         name_keys.sort()
         id_keys.sort()
@@ -239,7 +239,7 @@ def pe_resources_prepack(rsrc):
     table_size = offs
     for ent in entries:
         if isinstance(ent, _RESOURCE_DIRECTORY_ENTRY):
-            if isinstance(ent.NameOrId, six.string_types):
+            if isinstance(ent.NameOrId, str):
                 ent.NameOrId = (1<<31) | (table_size + add_string(ent.NameOrId))
 
     strings = b''.join(strings)

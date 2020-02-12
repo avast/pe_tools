@@ -1,7 +1,7 @@
 from .struct3 import Struct3, u16, u32
 from .utils import align4
 from grope import rope
-import six, struct
+import struct
 
 class _VS_FIXEDFILEINFO(Struct3):
     dwSignature: u32
@@ -187,7 +187,7 @@ def _pack_node(node):
         value = b''
         hdr.wValueLength = 0
         hdr.wType = 1
-    elif isinstance(node.value, six.string_types):
+    elif isinstance(node.value, str):
         value = node.value.encode('utf-16le') + b'\0\0'
         hdr.wValueLength = len(value) // 2
         hdr.wType = 1
