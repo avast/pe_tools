@@ -61,6 +61,7 @@ def main():
     gp.add_argument('--add-dependency', '-M', action='append', metavar="DEP", default=[], help="add dependency. DEP should be a space separated list of key=value pairs, e.g. " +
         "\"type=win32 name=Microsoft.Windows.Common-Controls version=6.0.0.0 processorArchitecture=* publicKeyToken=6595b64144ccf1df language=*\"")
     gp.add_argument('--set-version', '-V', action='append', metavar="STR", help="updates the specified version-info field, e.g. FileVersion=\"1, 2, 3, 4\"")
+    gp.add_argument('--set-resource', '-R', metavar=('TYPE', 'NAME', 'LANG', 'FILE'), nargs=4, action='append', help='set a resource entry to the contents of a file, e.g. "-R RT_RCDATA prog.exe 0 prog.exe"')
 
     ap.add_argument('--output', '-o', help="write the edited contents to OUTPUT instead of editing the input file in-place")
     ap.add_argument('file', help="the PE file to parse and edit")
@@ -102,7 +103,7 @@ def main():
                 for k in fixed.descriptor.names:
                     print('  {}: 0x{:x}'.format(k, getattr(fixed, k)))
 
-    if not args.clear and not args.apply and not args.add_dependency and not args.set_version:
+    if not args.clear and not args.apply and not args.add_dependency and not args.set_version and not args.set_resource:
         return 0
 
     if pe.has_trailer():
@@ -140,6 +141,15 @@ def main():
             for name in r[resource_type]:
                 for lang in r[resource_type][name]:
                     resources.setdefault(resource_type, {}).setdefault(name, {})[lang] = r[resource_type][name][lang]
+
+    for rtype, rname, lang, inname in args.set_resource:
+        res_fin = open(inname, 'rb')
+        rtype = getattr(KnownResourceTypes, rtype, rtype)
+        if rname.startswith('#'):
+            rname = int(rname[1:], 10)
+        else:
+            rname = rname.upper()
+        resources.setdefault(rtype, {}).setdefault(rname, {})[int(lang)] = grope.wrap_io(res_fin)
 
     if args.add_dependency:
         man_data = None
