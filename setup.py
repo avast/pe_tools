@@ -12,7 +12,7 @@ setup(
     maintainer_email='martin.vejnar@avast.com',
 
     packages=['pe_tools'],
-    install_requires=['grope', 'six'],
+    install_requires=['grope'],
 
     entry_points={
         'console_scripts': [
