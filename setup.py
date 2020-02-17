@@ -2,10 +2,16 @@
 # coding: utf-8
 
 from setuptools import setup
+import os
+
+top, _ = os.path.split(__file__)
+with open(os.path.join(top, 'VERSION'), 'r') as fin:
+    version = fin.read().strip() + '+local'
+version = '{version}'.format(version=version)
 
 setup(
     name='pe_tools',
-    version='0.2.8',
+    version=version,
 
     url='https://github.com/avast/pe_tools',
     maintainer='Martin Vejnár',

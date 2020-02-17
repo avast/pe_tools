@@ -1,0 +1,30 @@
+name: release
+on:
+  push:
+    branches:
+      - release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: avakar/derive-version@85d631f1a12b084b2592d1160b3c9154ceea7ea8
+      id: version
+    - run: sed -i 's/{version}/${{ steps.version.outputs.version }}/g' setup.py
+    - run: python3 -m pip install setuptools wheel
+    - run: python3 -m pip install twine
+    - run: python3 setup.py sdist bdist_wheel
+    - uses: actions/upload-artifact@v1.0.0
+      with:
+        name: pe_tools-${{ steps.version.outputs.version }}
+        path: dist
+    - name: Upload to PyPI
+      run: |
+        python3 -m twine upload -u avakar -p "${{ secrets.pypi_password }}" dist/*
+    - uses: avakar/tag-and-release@8f4b627f03fe59381267d3925d39191e27f44236
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

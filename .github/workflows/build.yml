@@ -1,0 +1,21 @@
+name: build
+on:
+  push:
+    branches-ignore:
+      - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: avakar/derive-version@85d631f1a12b084b2592d1160b3c9154ceea7ea8
+      id: version
+    - run: sed -i 's/{version}/${{ steps.version.outputs.version }}+${{ github.sha }}/g' setup.py
+    - run: python3 -m pip install setuptools wheel
+    - run: python3 setup.py sdist bdist_wheel
+    - uses: actions/upload-artifact@v1.0.0
+      with:
+        name: pe_tools-${{ steps.version.outputs.version }}+${{ github.sha }}
+        path: dist
