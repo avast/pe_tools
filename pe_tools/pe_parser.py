@@ -1,8 +1,10 @@
 import struct, io
+from dataclasses import dataclass
 from grope import BlobIO, rope
 from .struct3 import Struct3, u8, u16, u32, u64, char
 from .rsrc import parse_pe_resources
 from .rsrc import KnownResourceTypes
+import uuid
 from .version_info import parse_version_info
 
 class _IMAGE_FILE_HEADER(Struct3):
@@ -93,6 +95,29 @@ class _IMAGE_SECTION_HEADER(Struct3):
     NumberOfRelocations: u16
     NumberOfLinenumbers: u16
     Characteristics: u32
+
+class _IMAGE_DEBUG_DIRECTORY(Struct3):
+    Characteristics: u32
+    TimeDateStamp: u32
+    MajorVersion: u16
+    MinorVersion: u16
+    Type: u32
+    SizeOfData: u32
+    AddressOfRawData: u32
+    PointerToRawData: u32
+
+class _IMAGE_DEBUG_CODEVIEW(Struct3):
+    rsds: char[4]
+    guid: char[16]
+    age: u32
+
+@dataclass
+class CodeviewLink:
+    guid: uuid.UUID
+    age: int
+    filename: str
+
+IMAGE_DEBUG_TYPE_CODEVIEW = 2
 
 IMAGE_SCN_TYPE_REG                   = 0x00000000
 IMAGE_SCN_TYPE_DSECT                 = 0x00000001
@@ -340,6 +365,24 @@ class _PeFile:
             return None
 
         return slice(dd.VirtualAddress, dd.VirtualAddress + dd.Size)
+
+    def get_codeview_link(self):
+        debug_dir = self.get_directory_contents(IMAGE_DIRECTORY_ENTRY_DEBUG)
+
+        while debug_dir:
+            dd = _IMAGE_DEBUG_DIRECTORY.unpack_from(debug_dir)
+            debug_dir = debug_dir[_IMAGE_DEBUG_DIRECTORY.size:]
+
+            if dd.Type == IMAGE_DEBUG_TYPE_CODEVIEW:
+                dl = self._blob[dd.PointerToRawData:dd.PointerToRawData+dd.SizeOfData]
+                cv = _IMAGE_DEBUG_CODEVIEW.unpack_from(dl)
+                dl = bytes(dl[_IMAGE_DEBUG_CODEVIEW.size:])
+                term = dl.find(b'\0')
+                if term >= 0:
+                    dl = dl[:term]
+                filename = dl.decode('utf-8')
+                return CodeviewLink(uuid.UUID(bytes_le=cv.guid), cv.age, filename)
+        return None
 
     def get_directory_contents(self, idx):
         dd = self.find_directory(idx)
