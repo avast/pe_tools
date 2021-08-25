@@ -405,14 +405,18 @@ class _PeFile:
             return
         return res.get(KnownResourceTypes.RT_VERSION, {}).get(1, {})
 
-    def get_version_info(self):
+    def get_version_info(self, langs=(0x0409, 0)):
         vis = self._get_version_info_dict()
         if not vis:
             return None
 
-        vi = vis.get(0x0409)
-        if vi is None:
-            vi = vis[0]
+        for lngid in langs:
+            vi = vis.get(lngid)
+            if vi is not None:
+                break
+        else:
+            lngid, vi = vis.popitem()
+
         return parse_version_info(vi)
 
     def get_file_version(self):
