@@ -223,6 +223,18 @@ def _read(blob, fmt):
     size = struct.calcsize(fmt)
     return struct.unpack(fmt, bytes(blob[:size]))
 
+def parse_rsds_blob(blob):
+    if len(blob) < _IMAGE_DEBUG_CODEVIEW.size:
+        return None
+
+    cv = _IMAGE_DEBUG_CODEVIEW.unpack_from(blob)
+    if cv.rsds != b'RSDS':
+        return None
+
+    fname = bytes(blob[_IMAGE_DEBUG_CODEVIEW.size:])
+    fname, *_ = fname.split(b'\0', 1)
+    return CodeviewLink(uuid.UUID(bytes_le=cv.guid), cv.age, fname.decode('utf-8'))
+
 class _PeFile:
     def __init__(self, blob, verify_checksum=False):
         pe_offs, = _read(blob[0x3c:], '<H')
@@ -390,15 +402,10 @@ class _PeFile:
 
             if dd.Type == IMAGE_DEBUG_TYPE_CODEVIEW:
                 dl = self._blob[dd.PointerToRawData:dd.PointerToRawData+dd.SizeOfData]
-                cv = _IMAGE_DEBUG_CODEVIEW.unpack_from(dl)
-                if cv.rsds != 0x53445352:
-                    continue
-                dl = bytes(dl[_IMAGE_DEBUG_CODEVIEW.size:])
-                term = dl.find(0)
-                if term >= 0:
-                    dl = dl[:term]
-                filename = dl.decode('utf-8')
-                return CodeviewLink(uuid.UUID(bytes_le=cv.guid), cv.age, filename)
+
+                cv = parse_rsds_blob(dl)
+                if cv is not None:
+                    return cv
         return None
 
     def get_directory_contents(self, idx):
@@ -584,4 +591,7 @@ def parse_pe(blob, verify_checksum=False):
     Set `verify_checksum=True` to add `checksum_correct` member to
     the returned object.
     """
+
+    if isinstance(blob, bytes):
+        blob = memoryview(blob)
     return _PeFile(blob, verify_checksum=verify_checksum)
