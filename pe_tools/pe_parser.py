@@ -383,8 +383,10 @@ class _PeFile:
             if dd.Type == IMAGE_DEBUG_TYPE_CODEVIEW:
                 dl = self._blob[dd.PointerToRawData:dd.PointerToRawData+dd.SizeOfData]
                 cv = _IMAGE_DEBUG_CODEVIEW.unpack_from(dl)
+                if cv.rsds != 0x53445352:
+                    continue
                 dl = bytes(dl[_IMAGE_DEBUG_CODEVIEW.size:])
-                term = dl.find(b'\0')
+                term = dl.find(0)
                 if term >= 0:
                     dl = dl[:term]
                 filename = dl.decode('utf-8')
