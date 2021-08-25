@@ -117,6 +117,13 @@ class CodeviewLink:
     age: int
     filename: str
 
+    @property
+    def bxlink(self):
+        return f'{self.filename}{{{self.guid}}}{self.age}'
+
+    def __str__(self):
+        return self.bxlink
+
 IMAGE_DEBUG_TYPE_CODEVIEW = 2
 
 IMAGE_SCN_TYPE_REG                   = 0x00000000
