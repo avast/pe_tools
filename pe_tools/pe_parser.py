@@ -316,6 +316,14 @@ class _PeFile:
 
             next_free_address = self._mem_align(sec.hdr.VirtualAddress + sec.hdr.VirtualSize)
 
+    @property
+    def file_header(self):
+        return self._file_header
+
+    @property
+    def optional_header(self):
+        return self._opt_header
+
     def get_vm(self, start, stop):
         for sec in self._sections:
             if sec.hdr.VirtualAddress <= start and sec.hdr.VirtualAddress + sec.hdr.VirtualSize >= stop:
