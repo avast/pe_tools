@@ -87,9 +87,12 @@ class Struct3(metaclass=StructMeta, no_struct_members=True):
         return r
 
     @classmethod
-    def unpack_from(cls, buffer):
+    def unpack_from(cls, buffer, offset = 0):
         desc = cls.descriptor
-        data = struct.unpack(desc.fmt, bytes(buffer[:desc.size]))
+        if isinstance(buffer, bytes):
+            data = struct.unpack_from(desc.fmt, buffer, offset)
+        else:
+            data = struct.unpack(desc.fmt, bytes(buffer[offset:offset+desc.size]))
 
         r = cls()
         for k, v in zip(desc.annotations, data):

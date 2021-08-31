@@ -121,6 +121,10 @@ class CodeviewLink:
     def bxlink(self):
         return f'{self.filename}{{{self.guid}}}{self.age}'
 
+    @property
+    def short_filename(self):
+        return self.filename.rsplit('\\', 1)[-1]
+
     def __str__(self):
         return self.bxlink
 
