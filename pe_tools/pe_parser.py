@@ -117,6 +117,12 @@ class CodeviewLink:
     age: int
     filename: str
 
+    @classmethod
+    def from_bxlink(cls, bxlink: str):
+        fname, bxlink = bxlink.split('{', 1)
+        guid, age = bxlink.split('}', 1)
+        return cls(guid=uuid.UUID(guid), age=int(age, 10), filename=fname)
+
     @property
     def bxlink(self):
         return f'{self.filename}{{{self.guid}}}{self.age}'
