@@ -112,6 +112,25 @@ class _IMAGE_DEBUG_CODEVIEW(Struct3):
     age: u32
 
 @dataclass
+class PeIdent:
+    image_name: str
+    timestamp: int
+    size_of_image: int
+
+    @classmethod
+    def from_pelink(cls, pelink: str):
+        fname, tssize = pelink.split('/')
+        ts = int(tssize[:8], 16)
+        size = int(tssize[8:], 16)
+        return cls(image_name=fname, timestamp=ts, size_of_image=size)
+
+    @property
+    def pelink(self):
+        return f'{self.image_name}/{self.timestamp:08x}{self.size_of_image:x}'
+
+    def __str__(self):
+        return self.pelink
+@dataclass
 class CodeviewLink:
     guid: uuid.UUID
     age: int
