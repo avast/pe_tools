@@ -275,6 +275,7 @@ class _PeFile:
             raise RuntimeError('Not a PE file: PE signature is missing.')
 
         hdr = _IMAGE_FILE_HEADER.unpack_from_io(fin)
+        sect_offs = fin.tell() + hdr.SizeOfOptionalHeader
         opt_sig, = struct.unpack('<H', fin.read(2))
         if opt_sig == IMAGE_NT_OPTIONAL_HDR32_MAGIC:
             opt = _IMAGE_OPTIONAL_HEADER32.unpack_from_io(fin)
@@ -299,6 +300,8 @@ class _PeFile:
 
         dds = [_IMAGE_DATA_DIRECTORY.unpack_from_io(fin) for dd_idx in range(opt.NumberOfRvaAndSizes)]
 
+        fin.seek(sect_offs)
+        
         def make_pe_section(idx, hdr):
             name = hdr.Name.rstrip(b'\0')
 
