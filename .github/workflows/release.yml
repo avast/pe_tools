@@ -7,11 +7,14 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v2
-    - uses: avakar/derive-version@85d631f1a12b084b2592d1160b3c9154ceea7ea8
+    - name: Derive version
       id: version
+      run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
     - run: sed -i 's/{version}/${{ steps.version.outputs.version }}/g' setup.py
     - run: python3 -m pip install setuptools wheel
     - run: python3 -m pip install twine
@@ -23,8 +26,22 @@ jobs:
     - name: Upload to PyPI
       run: |
         python3 -m twine upload -u avakar -p "${{ secrets.pypi_password }}" dist/*
-    - uses: avakar/tag-and-release@8f4b627f03fe59381267d3925d39191e27f44236
-      with:
-        tag_name: v${{ steps.version.outputs.version }}
+    - name: Create git tag
+      run: |
+        TAG_NAME="v${{ steps.version.outputs.version }}"
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          echo "Tag $TAG_NAME already exists locally."
+        else
+          git tag "$TAG_NAME"
+        fi
+        git push origin "$TAG_NAME"
+    - name: Create GitHub release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG_NAME="v${{ steps.version.outputs.version }}"
+        if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+          echo "Release $TAG_NAME already exists."
+        else
+          gh release create "$TAG_NAME" --generate-notes
+        fi
