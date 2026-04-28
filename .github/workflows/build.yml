@@ -16,7 +16,7 @@ jobs:
     - run: sed -i 's/{version}/${{ steps.version.outputs.version }}+${{ github.sha }}/g' setup.py
     - run: python3 -m pip install setuptools wheel
     - run: python3 setup.py sdist bdist_wheel
-    - uses: actions/upload-artifact@v1.0.0
+    - uses: actions/upload-artifact@v4
       with:
         name: pe_tools-${{ steps.version.outputs.version }}+${{ github.sha }}
         path: dist
