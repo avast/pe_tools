@@ -24,8 +24,11 @@ jobs:
         name: pe_tools-${{ steps.version.outputs.version }}
         path: dist
     - name: Upload to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
-        python3 -m twine upload -u avakar -p "${{ secrets.pypi_password }}" dist/*
+        python3 -m twine upload dist/*
     - name: Create git tag
       run: |
         TAG_NAME="v${{ steps.version.outputs.version }}"
